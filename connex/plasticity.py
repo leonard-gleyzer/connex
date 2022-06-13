@@ -1,0 +1,374 @@
+from typing import Callable, Dict, Mapping, Optional, Sequence, Tuple
+
+import jax.nn as jnn
+import jax.numpy as jnp
+import jax.random as jr
+
+from .network import NeuralNetwork
+from .utils import _adjacency_matrix_to_dict, _identity
+
+
+def add_connections(
+    network: NeuralNetwork,
+    connections: Sequence[Tuple[int, int]],
+    input_neurons: Optional[Sequence[int]]=None,
+    output_neurons: Optional[Sequence[int]]=None
+) -> NeuralNetwork:
+    """Add connections to the network.
+    
+    **Arguments**:
+
+    - `network`: A `NeuralNetwork` object
+    - `connections`: A sequence of pairs `(i, j)` to add to the network
+        as directed edges.
+    - `input_neurons`: A sequence of `int` indicating the ids of the 
+        input neurons. The order here matters, as the input data will be
+        passed into the input neurons in the order passed in here. Optional
+        argument. If `None`, the input neurons of the original network will
+        be retained.
+    - `output_neurons`: A sequence of `int` indicating the ids of the 
+        output neurons. The order here matters, as the output data will be
+        read from the output neurons in the order passed in here. Optional 
+        argument. If `None`, the output neurons of the original network will
+        be retained.
+
+    **Returns**:
+
+    A `NeuralNetwork` object with the input connections added and original
+    parameters retained.
+    """
+    adjacency_matrix = jnp.copy(network.adjacency_matrix)
+    for (from_neuron, to_neuron) in connections:
+        assert 0 <= from_neuron < network.num_neurons
+        assert 0 <= to_neuron < network.num_neurons
+        assert from_neuron != to_neuron
+        adjacency_matrix = adjacency_matrix.at[from_neuron, to_neuron].set(1)
+    if input_neurons is None:
+        input_neurons = network.input_neurons
+    if output_neurons is None:
+        output_neurons = network.output_neurons
+
+    return NeuralNetwork(
+        network.num_neurons,
+        _adjacency_matrix_to_dict(adjacency_matrix),
+        input_neurons,
+        output_neurons,
+        network.activation,
+        network.output_activation,
+        network.seed,
+        network.parameter_matrix
+    )
+
+
+def remove_connections(
+    network: NeuralNetwork,
+    connections: Sequence[Tuple[int, int]],
+    input_neurons: Optional[Sequence[int]]=None,
+    output_neurons: Optional[Sequence[int]]=None
+) -> NeuralNetwork:
+    """Remove connections from the network.
+    
+    **Arguments**:
+
+    - `network`: A `NeuralNetwork` object
+    - `connections`: A sequence of pairs `(i, j)` to remove from the network
+        as directed edges.
+    - `input_neurons`: A sequence of `int` indicating the ids of the 
+        input neurons. The order here matters, as the input data will be
+        passed into the input neurons in the order passed in here. Optional
+        argument. If `None`, the input neurons of the original network will
+        be retained.
+    - `output_neurons`: A sequence of `int` indicating the ids of the 
+        output neurons. The order here matters, as the output data will be
+        read from the output neurons in the order passed in here. Optional 
+        argument. If `None`, the output neurons of the original network will
+        be retained.
+
+    **Returns**:
+
+    A `NeuralNetwork` object with the desired connections removed and original
+    parameters retained.
+    """
+    adjacency_matrix = jnp.copy(network.adjacency_matrix)
+    for (from_neuron, to_neuron) in connections:
+        assert 0 <= from_neuron < network.num_neurons
+        assert 0 <= to_neuron < network.num_neurons
+        assert from_neuron != to_neuron
+        adjacency_matrix = adjacency_matrix.at[from_neuron, to_neuron].set(0)
+    if input_neurons is None:
+        input_neurons = network.input_neurons
+    if output_neurons is None:
+        output_neurons = network.output_neurons
+
+    return NeuralNetwork(
+        network.num_neurons,
+        _adjacency_matrix_to_dict(adjacency_matrix),
+        input_neurons,
+        output_neurons,
+        network.activation,
+        network.output_activation,
+        network.seed,
+        network.parameter_matrix
+    )
+
+
+def add_neurons(
+    network: NeuralNetwork,
+    new_neuron_data: Sequence[Mapping],
+) -> Tuple[NeuralNetwork, Sequence[int]]:
+    """Add neurons to the network. These can be input, hidden, or output neurons.
+    
+    **Arguments**:
+    
+    - `network`: A `NeuralNetwork` object
+    - `new_neuron_data`: A sequence of dictionaries, where each dictionary 
+        represents a new neuron to add to the network. Each dictionary must 
+        have 3 `str` fields:
+        * `'in_neurons'`: An `Optional[Sequence[int]]` indexing the neurons from the 
+            original network that feed into the new neuron.
+        * `'out_neurons'`: An `Optional[Sequence[int]]` indexing the neurons from the 
+            original network which the new neuron feeds into.
+        * `'type'`: One of `{'input', 'hidden', 'output'}`. A `str` representing
+            which group the new neuron belongs to.
+
+    **Returns**:
+
+    A 2-tuple where the first element is the new `NeuralNetwork` with the new neurons
+    added and parameters from original neurons retained, and the second element 
+    is the sequence of the ids assigned to the added neurons in the order they 
+    were passed in through the input argument `new_neuron_data`.
+    """
+    num_new_neurons = len(new_neuron_data)
+    total_num_neurons = network.num_neurons + num_new_neurons
+    adjacency_matrix = jnp.zeros((total_num_neurons, total_num_neurons))
+    adjacency_matrix = adjacency_matrix \
+        .at[:-num_new_neurons, :-num_new_neurons] \
+        .set(network.adjacency_matrix)
+
+    input_neurons = network.input_neurons
+    output_neurons = network.output_neurons
+    id = network.num_neurons
+
+    for neuron_datum in new_neuron_data:
+        in_neurons = neuron_datum['in_neurons']
+        if in_neurons is not None:
+            in_neurons = jnp.array(neuron_datum['in_neurons'], dtype=int)
+            adjacency_matrix = adjacency_matrix.at[in_neurons, id].set(1)
+        out_neurons = neuron_datum['out_neurons']
+        if out_neurons is not None:
+            out_neurons = jnp.array(neuron_datum['out_neurons'])
+            adjacency_matrix = adjacency_matrix.at[id, out_neurons].set(1)
+
+        type = neuron_datum['type']
+        assert type in {'input', 'hidden', 'output'}
+        if type == 'input':
+            input_neurons = jnp.append(input_neurons, id)
+        elif type == 'output':
+            output_neurons = jnp.append(output_neurons, id)
+
+        id += 1
+
+    parameter_matrix = jr.normal(
+        jr.PRNGKey(network.seed),
+        (total_num_neurons, total_num_neurons + 1)
+    ) * 0.1
+    parameter_matrix = parameter_matrix \
+        .at[:network.num_neurons, :network.num_neurons] \
+        .set(network.parameter_matrix[:, :-1])
+    parameter_matrix = parameter_matrix \
+        .at[:network.num_neurons, -1] \
+        .set(network.parameter_matrix[:, -1])
+
+    _network = NeuralNetwork(
+        total_num_neurons,
+        _adjacency_matrix_to_dict(adjacency_matrix),
+        input_neurons,
+        output_neurons,
+        network.activation,
+        network.output_activation,
+        network.seed,
+        parameter_matrix
+    )
+
+    new_neuron_ids = jnp.arange(num_new_neurons) + network.num_neurons
+    return _network, new_neuron_ids.tolist()
+
+
+def remove_neurons(network: NeuralNetwork, ids: Sequence[int],
+) -> Tuple[NeuralNetwork, Dict[int, int]]:
+    """Remove neurons from the network. These can be input, hidden, or output neurons.
+    
+    **Arguments**:
+    
+    - `network`: A `NeuralNetwork` object.
+    - `ids`: A sequence of `int` ids corresponding to the neurons to remove
+        from the network.
+
+    **Returns**:
+
+    A 2-tuple where the first element is the new `NeuralNetwork` with the desired neurons
+    removed (along with all respective incoming and outgoing connections)
+    and parameters from original neurons retained, and the second element is
+    a dictionary mapping neuron ids from the original network to their respective 
+    ids in the new network.
+    """
+    for id in ids:
+        assert 0 <= id < network.num_neurons, id
+    ids = jnp.array(ids)
+
+    id_map = {}
+    sub = 0
+    for id in range(network.num_neurons):
+        if id in ids:
+            sub += 1
+        else:
+            id_map[id] = id - sub
+
+    # Adjust input and output neurons
+    input_neurons = jnp.setdiff1d(network.input_neurons, ids)
+    output_neurons = jnp.setdiff1d(network.output_neurons, ids)
+    input_neurons = [id_map[n] for n in input_neurons.tolist()]
+    output_neurons = [id_map[n] for n in output_neurons.tolist()]
+    
+    # Adjust adjacency matrix    
+    adjacency_matrix = network.adjacency_matrix
+    adjacency_matrix = jnp.delete(adjacency_matrix, ids, 0)
+    adjacency_matrix = jnp.delete(adjacency_matrix, ids, 1)
+
+    # Adjust parameter matrix
+    parameter_matrix = network.parameter_matrix
+    parameter_matrix = jnp.delete(parameter_matrix, ids, 0)
+    parameter_matrix = jnp.delete(parameter_matrix, ids, 1)
+
+    network = NeuralNetwork(
+        network.num_neurons - len(ids),
+        _adjacency_matrix_to_dict(adjacency_matrix),
+        input_neurons,
+        output_neurons,
+        network.activation,
+        network.output_activation,
+        network.seed,
+        parameter_matrix
+    )
+
+    return network, id_map
+
+
+def connect_networks(
+    network1: NeuralNetwork,
+    network2: NeuralNetwork,
+    connection_map_1_to_2: Mapping[int, Sequence[int]]={},
+    connection_map_2_to_1: Mapping[int, Sequence[int]]={},
+    input_neurons: Optional[Tuple[Sequence[int], Sequence[int]]]=None,
+    output_neurons: Optional[Tuple[Sequence[int], Sequence[int]]]=None,
+    activation: Callable=jnn.silu,
+    output_activation: Callable=_identity,
+    seed: int=42,
+    keep_parameters: bool=True,
+) -> Tuple[NeuralNetwork, Dict[int, int]]:
+    """Connect two networks together in a specified manner.
+    
+    **Arguments**:
+
+    - `network1`: A `NeuralNetwork` object.
+    - `network2`: A `NeuralNetwork` object.
+    - `connection_map_1_to_2` A dictionary that maps an `int` id representing the
+        corresponding neuron in `network1` to a sequence of `int` ids representing
+        the corresponding neurons in `network2` to which to connect the `network1` neuron.
+    - `connection_map_2_to_1` A dictionary that maps an `int` id representing the
+        corresponding neuron in `network2` to a sequence of int ids representing
+        the corresponding neurons in `network1` to which to connect the `network2` neuron.
+    - `input_neurons`: A 2-tuple of `int` sequences, where the first sequence is ids
+        of `network1` neurons and the second sequence is ids of `network2` neurons. The two 
+        sequences will be concatenated (and appropriately re-numbered) to form the
+        input neurons of the new network. Optional argument. If `None`, the input neurons
+        of the new network will be the concatenation of the input neurons of `network1`
+        and `network2`.
+    - `output_neurons`: A 2-tuple of `int` sequences, where the first sequence is ids
+        of `network1` neurons and the second sequence is ids of `network2` neurons. The two 
+        sequences will be concatenated (and appropriately re-numbered) to form the
+        output neurons of the new network. Optional argument. If `None`, the output neurons
+        of the new network will be the concatenation of the output neurons of `network1` 
+        and `network2`.
+    - `activation`: The activation function applied element-wise to the 
+        hidden (i.e. non-input, non-output) neurons. It can itself be a 
+        trainable `equinox Module`.
+    - `output_activation`: The activation function applied element-wise to 
+        the  output neurons. It can itself be a trainable equinox Module.
+    - `seed`: The random seed used to initialize parameters.
+    - `keep_parameters`: If `True`, copies the parameters of `network1` and `network2`
+        to the appropriate parameter entries of the new network.
+
+    **Returns**:
+
+    A 2-tuple where the first element is the new `NeuralNetwork`, and the second element is
+    A dictionary mapping neuron ids from `network2` to their respective 
+    ids in the new network. The `network1` ids are left unchanged.
+    """
+    # Set input and output neurons
+    if input_neurons is None:
+        input_neurons = [network1.input_neurons, network2.input_neurons]
+    input_neurons = jnp.append(
+        jnp.array(input_neurons[0]), 
+        jnp.array(input_neurons[1]) + network1.num_neurons
+    )
+
+    if output_neurons is None:
+        output_neurons = [network1.output_neurons, network2.output_neurons]
+    output_neurons = jnp.append(
+        jnp.array(output_neurons[0]), 
+        jnp.array(output_neurons[1]) + network1.num_neurons
+    )
+
+    # Set adjacency matrix
+    num_neurons = network1.num_neurons + network2.num_neurons
+    adjacency_matrix = jnp.zeros((num_neurons, num_neurons))
+    adjacency_matrix = adjacency_matrix \
+        .at[:network1.num_neurons, :network1.num_neurons] \
+        .set(network1.adjacency_matrix)
+    adjacency_matrix = adjacency_matrix \
+        .at[network1.num_neurons:, network1.num_neurons:] \
+        .set(network2.adjacency_matrix)   
+
+    for (from_neuron, to_neurons) in connection_map_1_to_2.items():
+        _to_neurons = jnp.array(to_neurons) + network1.num_neurons
+        adjacency_matrix = adjacency_matrix.at[from_neuron, _to_neurons].set(1)
+
+    for (from_neuron, to_neurons) in connection_map_2_to_1.items():
+        _from_neuron = from_neuron + network1.num_neurons
+        adjacency_matrix = adjacency_matrix.at[_from_neuron, to_neurons].set(1)
+
+    # Initialize parameters iid ~ N(0, 0.01)
+    parameter_matrix = jr.normal(
+        jr.PRNGKey(seed), 
+        (num_neurons, num_neurons + 1)
+    ) * 0.1
+
+    if keep_parameters:
+        # Copy parameters from input networks to corresponding neurons in new network
+        parameter_matrix = parameter_matrix \
+            .at[:network1.num_neurons, :network1.num_neurons] \
+            .set(network1.parameter_matrix[:, :-1])
+        parameter_matrix = parameter_matrix \
+            .at[:network1.num_neurons, -1] \
+            .set(network1.parameter_matrix[:, -1])
+        parameter_matrix = parameter_matrix \
+            .at[network1.num_neurons:, network1.num_neurons:-1] \
+            .set(network2.parameter_matrix[:, :-1])
+        parameter_matrix = parameter_matrix \
+            .at[network1.num_neurons:, -1] \
+            .set(network2.parameter_matrix[:, -1])
+    
+    network = NeuralNetwork(
+        network1.num_neurons + network2.num_neurons,
+        _adjacency_matrix_to_dict(adjacency_matrix),
+        input_neurons,
+        output_neurons,
+        activation,
+        output_activation,
+        seed,
+        parameter_matrix
+    )
+
+    neuron_ids = jnp.arange(network2.num_neurons) + network1.num_neurons
+    return network, dict(enumerate(neuron_ids.tolist()))
