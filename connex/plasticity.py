@@ -292,9 +292,9 @@ def connect_networks(
         and `network2`.
     - `activation`: The activation function applied element-wise to the 
         hidden (i.e. non-input, non-output) neurons. It can itself be a 
-        trainable `equinox Module`.
+        trainable `equinox.Module`.
     - `output_activation`: The activation function applied element-wise to 
-        the  output neurons. It can itself be a trainable equinox Module.
+        the  output neurons. It can itself be a trainable `equinox.Module`.
     - `seed`: The random seed used to initialize parameters.
     - `keep_parameters`: If `True`, copies the parameters of `network1` and `network2`
         to the appropriate parameter entries of the new network.
