@@ -2,7 +2,9 @@ import typing
 from typing import Mapping, Sequence
 import jax.nn as jnn
 import jax.numpy as jnp
+import jax.random as jr
 import numpy as np
+import time
 
 
 # Documentation helpers
@@ -45,3 +47,12 @@ def _adjacency_matrix_to_dict(adjacency_matrix: jnp.array
         if out:
             adjacency_dict[i] = out
     return adjacency_dict
+
+#######################################################################
+
+def keygen(
+    key: jr.PRNGKey=jr.PRNGKey(int(time.time())), 
+    n_keys: int=1,
+) -> jr.PRNGKey:
+    _, *new_keys = jr.split(key, n_keys + 1)
+    return jnp.array(new_keys)
