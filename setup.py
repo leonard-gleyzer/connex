@@ -19,7 +19,7 @@ author = "Leonard Gleyzer"
 
 author_email = "leonard_gleyzer@brown.edu"
 
-description = "DAG -> Trainable NN in JAX + artificial neuroplasticity."
+description = "Neural networks with arbitrary connectivity and plasticity."
 
 with open(_here / "README.md", "r") as f:
     readme = f.read()

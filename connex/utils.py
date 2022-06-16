@@ -52,7 +52,7 @@ def _adjacency_matrix_to_dict(adjacency_matrix: jnp.array
 
 def keygen(
     key: jr.PRNGKey=jr.PRNGKey(int(time.time())), 
-    n_keys: int=1,
-) -> jr.PRNGKey:
+    n_keys: int=2,
+) -> jnp.array:
     _, *new_keys = jr.split(key, n_keys + 1)
     return jnp.array(new_keys)

@@ -28,7 +28,7 @@ class NeuralNetwork(Module):
     input_neurons: jnp.array = static_field()
     output_neurons: jnp.array = static_field()
     num_neurons: int = static_field()
-    dropout_p: float = static_field()
+    dropout_p: jnp.array = static_field()
     seed: int = static_field()
 
     def __init__(
@@ -39,7 +39,7 @@ class NeuralNetwork(Module):
         output_neurons: Sequence[int],
         activation: Callable=jnn.silu,
         output_activation: Callable=_identity,
-        dropout_p: float=0.0,
+        dropout_p: Union[float, Sequence[float]]=0.,
         seed: int=0,
         parameter_matrix: Optional[Array]=None,
         **kwargs,
@@ -61,7 +61,11 @@ class NeuralNetwork(Module):
             trainable `equinox.Module`.
         - `output_activation`: The activation function applied element-wise to 
             the  output neurons. It can itself be a trainable `equinox.Module`.
-        - `dropout_p`: Dropout probability across hidden neurons.
+        - `dropout_p`: Dropout probability. If a single `float`, the same dropout
+            probability will be applied to all hidden neurons. If a `Sequence[float]`,
+            the sequence must have length `num_neurons`, where `dropout_p[i]` is the
+            dropout probability for neuron `i`. Note that this allows dropout to be 
+            applied to input and output neurons as well.
         - `seed`: The random seed used to initialize parameters.
         - `parameter_matrix`: A `jnp.array` of shape `(N, N + 1)` where entry `[i, j]` is 
             neuron `i`'s weight for neuron `j`, and entry
@@ -81,8 +85,19 @@ class NeuralNetwork(Module):
         self.num_neurons = num_neurons
         self.activation = activation
         self.output_activation = output_activation
-        self.dropout_p = dropout_p
         self.seed = seed
+
+        # Set dropout probabilities
+        if isinstance(dropout_p, float):
+            dropout_p = jnp.ones((num_neurons,)) * dropout_p
+            dropout_p = dropout_p.at[input_neurons].set(0.)
+            dropout_p = dropout_p.at[output_neurons].set(0.)
+        else:
+            assert len(dropout_p) == num_neurons
+            dropout_p = jnp.array(dropout_p)
+        assert jnp.all(jnp.greater_equal(dropout_p, 0))
+        assert jnp.all(jnp.less_equal(dropout_p, 1))
+        self.dropout_p = dropout_p
 
         # Set parameters
         if parameter_matrix is None:
@@ -122,7 +137,7 @@ class NeuralNetwork(Module):
         fire_neurons = vmap(self._fire_neuron, in_axes=[0, None, 0])
 
         # Forward pass in topological batch order
-        for tb in self.topo_batches[1:]:
+        for tb in self.topo_batches:
             keys = keygen(n_keys=jnp.size(tb))
             output_values = fire_neurons(tb, values, keys)
             values = values.at[tb].set(output_values)
@@ -138,7 +153,7 @@ class NeuralNetwork(Module):
         key: jr.PRNGKey,
     ) -> float:
         """Compute the output of neuron `id`."""
-        def _affine_transformation():
+        def _affine_transformation() -> jnp.array:
             # Get parameters
             parameters = self.parameter_matrix[id]
 
@@ -155,31 +170,36 @@ class NeuralNetwork(Module):
 
             return affine_transformation
 
-        # Avoid using dropout if output neuron
-        def exec_if_output_neuron():
-            affine_transformation = _affine_transformation()
-            output = self.output_activation(affine_transformation)
-            return jnp.squeeze(output)
+        rand = jr.uniform(key, minval=0, maxval=1)
+        use_dropout = jnp.less_equal(rand, self.dropout_p[id])
 
-        def exec_if_hidden_neuron():
-            rand = jr.uniform(key, minval=0, maxval=1)
-            use_dropout = jnp.less_equal(rand, self.dropout_p)
+        def exec_if_dropout() -> float:
+            return 0.
 
-            def exec_if_not_dropout():
+        def exec_if_not_dropout() -> float:
+
+            def exec_if_input_neuron() -> float:
+                return neuron_values[id]
+
+            def exec_if_not_input_neuron() -> float:
                 affine_transformation = _affine_transformation()
-                output = self.activation(affine_transformation)
+                output = lax.cond(
+                    jnp.isin(id, self.output_neurons),
+                    lambda: self.output_activation(affine_transformation),
+                    lambda: self.activation(affine_transformation)
+                )
                 return jnp.squeeze(output)
 
             return lax.cond(
-                use_dropout,
-                lambda: 0.,
-                exec_if_not_dropout
+                jnp.isin(id, self.input_neurons),
+                exec_if_input_neuron,
+                exec_if_not_input_neuron
             )
         
         return lax.cond(
-            jnp.isin(id, self.output_neurons),
-            exec_if_output_neuron,
-            exec_if_hidden_neuron
+            use_dropout,
+            exec_if_dropout,
+            exec_if_not_dropout
         )
 
 
