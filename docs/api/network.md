@@ -7,3 +7,5 @@ The main class/object of the `connex` library.
         members:
             - __init__
             - __call__
+            - get_dropout_p
+            - set_dropout_p

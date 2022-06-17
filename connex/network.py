@@ -1,12 +1,15 @@
 from typing import Callable, Mapping, Optional, Sequence, Union
 
+import equinox.experimental as eqxe
+from equinox import Module, filter_jit, static_field
+
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
-from equinox import Module, filter_jit, static_field
 from jax import vmap, lax
 
 import numpy as np
+from torch import dropout
 
 from custom_types import Array
 from utils import keygen, _adjacency_dict_to_matrix, _identity
@@ -28,7 +31,7 @@ class NeuralNetwork(Module):
     input_neurons: jnp.array = static_field()
     output_neurons: jnp.array = static_field()
     num_neurons: int = static_field()
-    dropout_p: jnp.array = static_field()
+    dropout_p: eqxe.StateIndex = static_field()
     seed: int = static_field()
 
     def __init__(
@@ -88,16 +91,8 @@ class NeuralNetwork(Module):
         self.seed = seed
 
         # Set dropout probabilities
-        if isinstance(dropout_p, float):
-            dropout_p = jnp.ones((num_neurons,)) * dropout_p
-            dropout_p = dropout_p.at[input_neurons].set(0.)
-            dropout_p = dropout_p.at[output_neurons].set(0.)
-        else:
-            assert len(dropout_p) == num_neurons
-            dropout_p = jnp.array(dropout_p)
-        assert jnp.all(jnp.greater_equal(dropout_p, 0))
-        assert jnp.all(jnp.less_equal(dropout_p, 1))
-        self.dropout_p = dropout_p
+        self.dropout_p = eqxe.StateIndex()
+        self.set_dropout_p(dropout_p)
 
         # Set parameters
         if parameter_matrix is None:
@@ -166,12 +161,11 @@ class NeuralNetwork(Module):
 
             # Add a dimension in case the activation functions are themselves
             # neural networks (i.e. equinox Modules)
-            affine_transformation = jnp.expand_dims(affine_transformation, 0)
-
-            return affine_transformation
+            return jnp.expand_dims(affine_transformation, 0)
 
         rand = jr.uniform(key, minval=0, maxval=1)
-        use_dropout = jnp.less_equal(rand, self.dropout_p[id])
+        dropout_p = self.get_dropout_p()
+        use_dropout = jnp.less_equal(rand, dropout_p[id])
 
         def exec_if_dropout() -> float:
             return 0.
@@ -262,3 +256,40 @@ class NeuralNetwork(Module):
         assert len(union) == 0, f'Cycle(s) found involving neurons {union}'
 
         return topo_batches
+
+
+    def get_dropout_p(self) -> jnp.array:
+        """Get the per-neuron dropout probabilities.
+        
+        **Returns**:
+
+        A 1D `jnp.array` where element `i` is the dropout probability of neuron `i`.
+        """
+        dropout_p = eqxe.get_state(
+            self.dropout_p, 
+            jnp.arange(self.num_neurons, dtype=float)
+        )
+        return dropout_p
+
+
+    def set_dropout_p(self, dropout_p: Union[float, Sequence[float]]) -> None:
+        """Set the per-neuron dropout probabilities.
+        
+        **Arguments**:
+
+        - `dropout_p`: Dropout probability. If a single `float`, the same dropout
+            probability will be applied to all hidden neurons. If a `Sequence[float]`,
+            the sequence must have length `num_neurons`, where `dropout_p[i]` is the
+            dropout probability for neuron `i`. Note that this allows dropout to be 
+            applied to input and output neurons as well.
+        """
+        if isinstance(dropout_p, float):
+            dropout_p = jnp.ones((self.num_neurons,)) * dropout_p
+            dropout_p = dropout_p.at[self.input_neurons].set(0.)
+            dropout_p = dropout_p.at[self.output_neurons].set(0.)
+        else:
+            assert len(dropout_p) == self.num_neurons
+            dropout_p = jnp.array(dropout_p)
+        assert jnp.all(jnp.greater_equal(dropout_p, 0))
+        assert jnp.all(jnp.less_equal(dropout_p, 1))
+        eqxe.set_state(self.dropout_p, dropout_p)
