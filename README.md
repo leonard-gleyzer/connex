@@ -1,10 +1,11 @@
 <h1 align='center'>Connex</h1>
 
 
-Connex is a small [JAX](https://github.com/google/jax) library built on [Equinox](https://github.com/patrick-kidger/equinox) inspired by two features of biological neural networks:
+Connex is a small [JAX](https://github.com/google/jax) library built on [Equinox](https://github.com/patrick-kidger/equinox) whose aim is to incorporate artificial analogues of biological neuron attributes into deep learning research and architecture design. Currently, this includes:
 
 - **Complex Connectivity**: Turn any directed acyclic graph (DAG) into a trainable neural network.
 - **Plasticity**: Add and remove both connections and neurons at the individual level.
+- **Firing Modulation**: Set and modify dropout probabilities for all neurons individually.
 
 ## Installation
 
