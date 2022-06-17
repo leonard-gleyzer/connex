@@ -70,9 +70,8 @@ class NeuralNetwork(Module):
             applied to input and output neurons as well.
         - `seed`: The random seed used to initialize parameters.
         - `parameter_matrix`: A `jnp.array` of shape `(N, N + 1)` where entry `[i, j]` is 
-            neuron `i`'s weight for neuron `j`, and entry
-            `[i, N]` is neuron `i`'s bias. Optional argument -- used primarily for
-            plasticity functionality.
+            neuron `i`'s weight for neuron `j`, and entry `[i, N]` is neuron `i`'s bias. 
+            Optional argument -- used primarily for plasticity functionality.
         """
         super().__init__(**kwargs)
         input_neurons = jnp.array(input_neurons, dtype=int)
