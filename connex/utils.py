@@ -1,5 +1,5 @@
 import typing
-from typing import Mapping, Sequence
+from typing import Mapping, Optional, Sequence
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
@@ -50,7 +50,11 @@ def _adjacency_matrix_to_dict(adjacency_matrix: jnp.array
 
 #######################################################################
 
-def keygen(seed: int=int(time.time()), n_keys: int=2) -> jnp.array:
+def keygen(n_keys: int=2, seed: Optional[int]=None) -> jnp.array:
+    if seed is None:
+        seed = time.time()
+        seed = str(seed).replace('.', '')
+        seed = int(seed)
     key = jr.PRNGKey(seed)
     _, *new_keys = jr.split(key, n_keys + 1)
     return jnp.array(new_keys)
