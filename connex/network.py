@@ -39,11 +39,11 @@ class NeuralNetwork(Module):
         adjacency_dict: Mapping[int, Sequence[int]],
         input_neurons: Sequence[int],
         output_neurons: Sequence[int],
-        activation: Callable=jnn.silu,
-        output_activation: Callable=_identity,
-        dropout_p: Union[float, Sequence[float]]=0.,
-        seed: int=0,
-        parameter_matrix: Optional[Array]=None,
+        activation: Callable = jnn.silu,
+        output_activation: Callable = _identity,
+        dropout_p: Union[float, Sequence[float]] = 0.,
+        seed: int = 0,
+        parameter_matrix: Optional[Array] = None,
         **kwargs,
     ):
         """**Arguments:**

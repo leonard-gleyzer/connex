@@ -50,7 +50,7 @@ def _adjacency_matrix_to_dict(adjacency_matrix: jnp.array
 
 #######################################################################
 
-def keygen(n_keys: int=2, seed: Optional[int]=None) -> jnp.array:
+def keygen(n_keys: int = 2, seed: Optional[int] = None) -> jnp.array:
     if seed is None:
         seed = time.time()
         seed = str(seed).replace('.', '')

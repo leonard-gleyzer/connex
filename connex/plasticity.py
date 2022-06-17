@@ -11,8 +11,8 @@ from .utils import _adjacency_matrix_to_dict, _identity
 def add_connections(
     network: NeuralNetwork,
     connections: Sequence[Tuple[int, int]],
-    input_neurons: Optional[Sequence[int]]=None,
-    output_neurons: Optional[Sequence[int]]=None
+    input_neurons: Optional[Sequence[int]] = None,
+    output_neurons: Optional[Sequence[int]] = None
 ) -> NeuralNetwork:
     """Add connections to the network.
     
@@ -63,8 +63,8 @@ def add_connections(
 def remove_connections(
     network: NeuralNetwork,
     connections: Sequence[Tuple[int, int]],
-    input_neurons: Optional[Sequence[int]]=None,
-    output_neurons: Optional[Sequence[int]]=None
+    input_neurons: Optional[Sequence[int]] = None,
+    output_neurons: Optional[Sequence[int]] = None
 ) -> NeuralNetwork:
     """Remove connections from the network.
     
@@ -257,14 +257,14 @@ def remove_neurons(network: NeuralNetwork, ids: Sequence[int],
 def connect_networks(
     network1: NeuralNetwork,
     network2: NeuralNetwork,
-    connection_map_1_to_2: Mapping[int, Sequence[int]]={},
-    connection_map_2_to_1: Mapping[int, Sequence[int]]={},
-    input_neurons: Optional[Tuple[Sequence[int], Sequence[int]]]=None,
-    output_neurons: Optional[Tuple[Sequence[int], Sequence[int]]]=None,
-    activation: Callable=jnn.silu,
-    output_activation: Callable=_identity,
-    seed: int=42,
-    keep_parameters: bool=True,
+    connection_map_1_to_2: Mapping[int, Sequence[int]] = {},
+    connection_map_2_to_1: Mapping[int, Sequence[int]] = {},
+    input_neurons: Optional[Tuple[Sequence[int], Sequence[int]]] = None,
+    output_neurons: Optional[Tuple[Sequence[int], Sequence[int]]] = None,
+    activation: Callable = jnn.silu,
+    output_activation: Callable = _identity,
+    seed: int = 42,
+    keep_parameters: bool = True,
 ) -> Tuple[NeuralNetwork, Dict[int, int]]:
     """Connect two networks together in a specified manner.
     
