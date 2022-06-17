@@ -89,7 +89,8 @@ class NeuralNetwork(Module):
         self.output_activation = output_activation
         self.seed = seed
 
-        # Set dropout probabilities
+        # Set dropout probabilities. We use eqxe.StateIndex here so that
+        # dropout probabilities can later be modified, if desired.
         self.dropout_p = eqxe.StateIndex()
         self.set_dropout_p(dropout_p)
 
