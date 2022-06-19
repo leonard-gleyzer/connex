@@ -217,8 +217,8 @@ def add_neurons(
         input_neurons,
         output_neurons,
         network.activation,
-        dropout_p,
         network.output_activation,
+        dropout_p,
         network.seed,
         parameter_matrix
     )
