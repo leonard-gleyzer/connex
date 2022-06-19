@@ -41,7 +41,7 @@ def test_add_neurons():
         {'in_neurons': [0], 'out_neurons': [1, 2], 'type': 'hidden', 'dropout_p': None}
     )
     new_neuron_data.append(
-        {'in_neurons': [1], 'out_neurons': None, 'type': 'output', 'dropout_p': jnp.zeros((6,))}
+        {'in_neurons': [1], 'out_neurons': None, 'type': 'output', 'dropout_p': 1}
     )
     new_net, new_ids = cnx.add_neurons(mlp, new_neuron_data)
     assert jnp.array_equal(new_net.input_neurons, jnp.append(mlp.input_neurons, 6))
