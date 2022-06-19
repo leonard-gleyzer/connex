@@ -57,6 +57,6 @@ class MLP(NeuralNetwork):
             output_neurons,
             activation,
             output_activation,
-            seed,
+            seed=seed,
             **kwargs
         )

@@ -194,7 +194,7 @@ def add_neurons(
         _dropout_p = neuron_datum['dropout_p']
         if _dropout_p is None:
             _dropout_p = 0.
-        dropout_p = jnp.append(dropout_p, jnp.array(_dropout_p))
+        dropout_p = jnp.append(dropout_p, _dropout_p)
         
         id += 1
 
@@ -342,7 +342,8 @@ def connect_networks(
         the sequence must have length `num_neurons`, where `dropout_p[i]` is the
         dropout probability for neuron `i`. Note that this allows dropout to be 
         applied to input and output neurons as well. Optional argument. If `None`, 
-        defaults to the concatenation of `network1.dropout_p` and `network2.dropout_p`.
+        defaults to the concatenation of `network1.get_dropout_p()` and 
+        `network2.get_dropout_p()`.
     - `seed`: The random seed used to initialize parameters.
     - `keep_parameters`: If `True`, copies the parameters of `network1` and `network2`
         to the appropriate parameter entries of the new network.
