@@ -111,3 +111,15 @@ def test_nn_activation_functions():
             cnx_mlp.activation.layers[i].bias,
             cnx_mlp.output_activation.layers[i].bias
         )
+
+
+def test_dropout():
+    mlp = cnx.nn.MLP(1, 1, 4, 2)
+    mlp.set_dropout_p(0.5)
+    arr = jnp.ones((mlp.num_neurons,)) * 0.5
+    arr = arr.at[jnp.array([0, 9])].set(0.)
+    assert jnp.array_equal(mlp.get_dropout_p(), arr)
+    zeros = jnp.zeros((mlp.num_neurons,))
+    mlp.set_dropout_p(zeros)
+    assert jnp.array_equal(mlp.get_dropout_p(), zeros)
+

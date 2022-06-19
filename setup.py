@@ -19,7 +19,7 @@ author = "Leonard Gleyzer"
 
 author_email = "leonard_gleyzer@brown.edu"
 
-description = "DAG -> Trainable NN in JAX + artificial neuroplasticity."
+description = "Neural networks with arbitrary connectivity and plasticity."
 
 with open(_here / "README.md", "r") as f:
     readme = f.read()
@@ -44,7 +44,7 @@ classifiers = [
 
 python_requires = "~=3.7"
 
-install_requires = ["jax>=0.3.4", "equinox", "optax>=0.1.2"]
+install_requires = ["jax>=0.3.4", "equinox>=0.5.2", "optax>=0.1.2"]
 
 setuptools.setup(
     name=name,

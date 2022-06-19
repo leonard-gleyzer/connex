@@ -35,13 +35,13 @@ def test_add_neurons():
     mlp = cnx.nn.MLP(1, 1, 2, 2)
     new_neuron_data = []
     new_neuron_data.append(
-        {'in_neurons': None, 'out_neurons': [3, 5], 'type': 'input'}
+        {'in_neurons': None, 'out_neurons': [3, 5], 'type': 'input', 'dropout_p': 0.}
     )
     new_neuron_data.append(
-        {'in_neurons': [0], 'out_neurons': [1, 2], 'type': 'hidden'}
+        {'in_neurons': [0], 'out_neurons': [1, 2], 'type': 'hidden', 'dropout_p': None}
     )
     new_neuron_data.append(
-        {'in_neurons': [1], 'out_neurons': None, 'type': 'output'}
+        {'in_neurons': [1], 'out_neurons': None, 'type': 'output', 'dropout_p': 1}
     )
     new_net, new_ids = cnx.add_neurons(mlp, new_neuron_data)
     assert jnp.array_equal(new_net.input_neurons, jnp.append(mlp.input_neurons, 6))
@@ -69,13 +69,13 @@ def test_remove_neurons():
     mlp = cnx.nn.MLP(1, 1, 2, 2)
     new_neuron_data = []
     new_neuron_data.append(
-        {'in_neurons': None, 'out_neurons': [3, 5], 'type': 'input'}
+        {'in_neurons': None, 'out_neurons': [3, 5], 'type': 'input', 'dropout_p': 0.}
     )
     new_neuron_data.append(
-        {'in_neurons': [0], 'out_neurons': [1, 2], 'type': 'hidden'}
+        {'in_neurons': [0], 'out_neurons': [1, 2], 'type': 'hidden', 'dropout_p': None}
     )
     new_neuron_data.append(
-        {'in_neurons': [1], 'out_neurons': None, 'type': 'output'}
+        {'in_neurons': [1], 'out_neurons': None, 'type': 'output', 'dropout_p': 1}
     )
     net, _ = cnx.add_neurons(mlp, new_neuron_data)
     _remove_neurons = [2, 3, 4, 5, 6, 7]

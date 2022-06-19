@@ -1,15 +1,17 @@
-from typing import Callable, Mapping, Optional, Sequence
+from typing import Callable, Mapping, Optional, Sequence, Union
+
+import equinox.experimental as eqxe
+from equinox import Module, filter_jit, static_field
 
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
-from equinox import Module, filter_jit, static_field
 from jax import vmap, lax
 
 import numpy as np
 
 from .custom_types import Array
-from .utils import _adjacency_dict_to_matrix, _identity
+from .utils import keygen, _adjacency_dict_to_matrix, _identity
 
 
 class NeuralNetwork(Module):
@@ -28,6 +30,7 @@ class NeuralNetwork(Module):
     input_neurons: jnp.array = static_field()
     output_neurons: jnp.array = static_field()
     num_neurons: int = static_field()
+    dropout_p: eqxe.StateIndex = static_field()
     seed: int = static_field()
 
     def __init__(
@@ -36,10 +39,11 @@ class NeuralNetwork(Module):
         adjacency_dict: Mapping[int, Sequence[int]],
         input_neurons: Sequence[int],
         output_neurons: Sequence[int],
-        activation: Callable=jnn.silu,
-        output_activation: Callable=_identity,
-        seed: int=0,
-        parameter_matrix: Optional[Array]=None,
+        activation: Callable = jnn.silu,
+        output_activation: Callable = _identity,
+        dropout_p: Union[float, Sequence[float]] = 0.,
+        seed: int = 0,
+        parameter_matrix: Optional[Array] = None,
         **kwargs,
     ):
         """**Arguments:**
@@ -59,11 +63,15 @@ class NeuralNetwork(Module):
             trainable `equinox.Module`.
         - `output_activation`: The activation function applied element-wise to 
             the  output neurons. It can itself be a trainable `equinox.Module`.
+        - `dropout_p`: Dropout probability. If a single `float`, the same dropout
+            probability will be applied to all hidden neurons. If a `Sequence[float]`,
+            the sequence must have length `num_neurons`, where `dropout_p[i]` is the
+            dropout probability for neuron `i`. Note that this allows dropout to be 
+            applied to input and output neurons as well.
         - `seed`: The random seed used to initialize parameters.
         - `parameter_matrix`: A `jnp.array` of shape `(N, N + 1)` where entry `[i, j]` is 
-            neuron `i`'s weight for neuron `j`, and entry
-            `[i, N]` is neuron `i`'s bias. Optional argument -- used primarily for
-            plasticity functionality.
+            neuron `i`'s weight for neuron `j`, and entry `[i, N]` is neuron `i`'s bias. 
+            Optional argument -- used primarily for plasticity functionality.
         """
         super().__init__(**kwargs)
         input_neurons = jnp.array(input_neurons, dtype=int)
@@ -79,6 +87,11 @@ class NeuralNetwork(Module):
         self.activation = activation
         self.output_activation = output_activation
         self.seed = seed
+
+        # Set dropout probabilities. We use eqxe.StateIndex here so that
+        # dropout probabilities can later be modified, if desired.
+        self.dropout_p = eqxe.StateIndex()
+        self.set_dropout_p(dropout_p)
 
         # Set parameters
         if parameter_matrix is None:
@@ -115,41 +128,72 @@ class NeuralNetwork(Module):
         values = jnp.zeros((self.num_neurons,)).at[self.input_neurons].set(x)
 
         # Function to parallelize neurons within a topological batch
-        fire_neurons = vmap(self._fire_neuron, in_axes=[0, None])
+        fire_neurons = vmap(self._fire_neuron, in_axes=[0, None, 0])
 
         # Forward pass in topological batch order
-        for tb in self.topo_batches[1:]:
-            output_values = fire_neurons(tb, values)
+        for tb in self.topo_batches:
+            keys = keygen(n_keys=jnp.size(tb))
+            output_values = fire_neurons(tb, values, keys)
             values = values.at[tb].set(output_values)
 
         # Return values pertaining to output neurons
         return values[self.output_neurons]
 
 
-    def _fire_neuron(self, id: int, neuron_values: jnp.array) -> float:
+    def _fire_neuron(
+        self, 
+        id: int, 
+        neuron_values: jnp.array, 
+        key: jr.PRNGKey,
+    ) -> float:
         """Compute the output of neuron `id`."""
-        # Get parameters
-        parameters = self.parameter_matrix[id]
+        def _affine_transformation() -> jnp.array:
+            # Get parameters
+            parameters = self.parameter_matrix[id]
 
-        # Use the respective column of the adjacency matrix as a binary mask
-        # so vmap can work with neurons with different numbers of inputs
-        inputs = neuron_values * self.adjacency_matrix[:, id]
+            # Use the respective column of the adjacency matrix as a binary mask
+            # so vmap can work with neurons with different numbers of inputs
+            inputs = neuron_values * self.adjacency_matrix[:, id]
 
-        # Apply weights and bias
-        affine_transformation = jnp.dot(parameters, jnp.append(inputs, 1))
+            # Apply weights and bias
+            affine_transformation = jnp.dot(parameters, jnp.append(inputs, 1))
 
-        # Add a dimension in case the activation functions are themselves
-        # neural networks (i.e. equinox Modules)
-        affine_transformation = jnp.expand_dims(affine_transformation, 0)
+            # Add a dimension in case the activation functions are themselves
+            # neural networks (i.e. equinox Modules)
+            return jnp.expand_dims(affine_transformation, 0)
 
-        # Apply activation
-        output = lax.cond(
-            jnp.isin(id, self.output_neurons),
-            lambda: self.output_activation(affine_transformation),
-            lambda: self.activation(affine_transformation)
+        rand = jr.uniform(key, minval=0, maxval=1)
+        dropout_p = self.get_dropout_p()
+        use_dropout = jnp.less_equal(rand, dropout_p[id])
+
+        def exec_if_dropout() -> float:
+            return 0.
+
+        def exec_if_not_dropout() -> float:
+
+            def exec_if_input_neuron() -> float:
+                return neuron_values[id]
+
+            def exec_if_not_input_neuron() -> float:
+                affine_transformation = _affine_transformation()
+                output = lax.cond(
+                    jnp.isin(id, self.output_neurons),
+                    lambda: self.output_activation(affine_transformation),
+                    lambda: self.activation(affine_transformation)
+                )
+                return jnp.squeeze(output)
+
+            return lax.cond(
+                jnp.isin(id, self.input_neurons),
+                exec_if_input_neuron,
+                exec_if_not_input_neuron
+            )
+        
+        return lax.cond(
+            use_dropout,
+            exec_if_dropout,
+            exec_if_not_dropout
         )
-
-        return jnp.squeeze(output)
 
 
     def _check_input(
@@ -211,3 +255,44 @@ class NeuralNetwork(Module):
         assert len(union) == 0, f'Cycle(s) found involving neurons {union}'
 
         return topo_batches
+
+
+    def get_dropout_p(self) -> jnp.array:
+        """Get the per-neuron dropout probabilities.
+        
+        **Returns**:
+
+        A 1D `jnp.array` with shape `((num_neurons,))` where element `i` is the  
+        dropout probability of neuron `i`.
+        """
+        dropout_p = eqxe.get_state(
+            self.dropout_p, 
+            jnp.arange(self.num_neurons, dtype=float)
+        )
+        return dropout_p
+
+
+    def set_dropout_p(self, dropout_p: Union[float, Sequence[float]]) -> None:
+        """Set the per-neuron dropout probabilities.
+        
+        **Arguments**:
+
+        - `dropout_p`: Dropout probability. If a single `float`, the same dropout
+            probability will be applied to all hidden neurons. If a `Sequence[float]`,
+            the sequence must have length `num_neurons`, where `dropout_p[i]` is the
+            dropout probability for neuron `i`. Note that this allows dropout to be 
+            applied to input and output neurons as well.
+        """
+        if isinstance(dropout_p, int):
+            # if user enters 0 or 1
+            dropout_p = float(dropout_p)
+        if isinstance(dropout_p, float):
+            dropout_p = jnp.ones((self.num_neurons,)) * dropout_p
+            dropout_p = dropout_p.at[self.input_neurons].set(0.)
+            dropout_p = dropout_p.at[self.output_neurons].set(0.)
+        else:
+            assert len(dropout_p) == self.num_neurons
+            dropout_p = jnp.array(dropout_p, dtype=float)
+        assert jnp.all(jnp.greater_equal(dropout_p, 0))
+        assert jnp.all(jnp.less_equal(dropout_p, 1))
+        eqxe.set_state(self.dropout_p, dropout_p)

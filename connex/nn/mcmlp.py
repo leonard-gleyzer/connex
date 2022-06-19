@@ -2,7 +2,6 @@ from typing import Callable
 
 import jax.numpy as jnp
 import jax.nn as jnn
-import numpy as np
 
 from .. import NeuralNetwork
 from ..utils import _identity
@@ -60,6 +59,6 @@ class MCMLP(NeuralNetwork):
             output_neurons,
             activation,
             output_activation,
-            seed,
+            seed=seed,
             **kwargs
         )
