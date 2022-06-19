@@ -120,6 +120,6 @@ def test_dropout():
     arr = arr.at[jnp.array([0, 9])].set(0.)
     assert jnp.array_equal(mlp.get_dropout_p(), arr)
     zeros = jnp.zeros((mlp.num_neurons,))
-    mlp.set_dropout(zeros)
+    mlp.set_dropout_p(zeros)
     assert jnp.array_equal(mlp.get_dropout_p(), zeros)
 
