@@ -257,7 +257,7 @@ class NeuralNetwork(Module):
         return topo_batches
 
 
-    def get_dropout_p(self) -> jnp.array:
+    def get_dropout_p(self) -> Array:
         """Get the per-neuron dropout probabilities.
         
         **Returns**:
