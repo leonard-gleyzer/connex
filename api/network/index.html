@@ -556,13 +556,13 @@ this.</p>
       <p>The forward pass of the network. Neurons are "fired" in topological batch
 order (see https://arxiv.org/pdf/1911.06904.pdf), with <code>jax.vmap</code> 
 vectorization used within each topological batch.</p>
-<p><strong>Arguments</strong></p>
+<p><strong>Arguments</strong>:</p>
 <ul>
 <li><code>x</code>: The input array to the network for the forward pass. The individual
     values will be written to the input neurons in the order passed in during
     initialization.</li>
 </ul>
-<p><strong>Returns</strong></p>
+<p><strong>Returns</strong>:</p>
 <p>The result array from the forward pass. The order of the array elements will be
 the order of the output neurons passed in during initialization.</p>
 
@@ -586,8 +586,8 @@ the order of the output neurons passed in during initialization.</p>
 
       <p>Get the per-neuron dropout probabilities.</p>
 <p><strong>Returns</strong>:</p>
-<p>A 1D <code>jnp.array</code> with shape <code>((num_neurons,))</code> where element <code>i</code> is the<br />
-dropout probability of neuron <code>i</code>.</p>
+<p>A 1D <code>jnp.array</code> with shape <code>((num_neurons,))</code> where element <code>i</code> 
+is the dropout probability of neuron <code>i</code>.</p>
 
     </div>
 
