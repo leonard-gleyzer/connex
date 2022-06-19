@@ -92,7 +92,7 @@ for _ in range(n_epochs):
     network, opt_state, loss = step(network, optim, opt_state, X, y)
 ```
 
-Now suppose we wish to add connections 1 &rarr; 6 and 2 &rarr; 11, and remove neuron 9:
+Now suppose we wish to add connections 1 &rarr; 6 and 2 &rarr; 11, remove neuron 9, and set the dropout probability of all hidden neurons to 0.1:
 
 ```python
 # Add connections
@@ -100,6 +100,9 @@ network = cnx.add_connections(network, [(1, 6), (2, 11)])
 
 # Remove neuron
 network, _ = cnx.remove_neurons(network, [9])
+
+# Set dropout probability
+network.set_dropout_p(0.1)
 ```
 
 That's all there is to it.  The parameters have been retained for neurons in the original network that have not been removed. `connex.remove_neurons` also returns auxiliary information about neuron ids, since removal of neurons re-numbers the remaining ones. 
