@@ -19,7 +19,7 @@ author = "Leonard Gleyzer"
 
 author_email = "leonard_gleyzer@brown.edu"
 
-description = "Neural networks with arbitrary connectivity and plasticity."
+description = "Making neural networks more neural."
 
 with open(_here / "README.md", "r") as f:
     readme = f.read()
