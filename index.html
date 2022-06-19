@@ -465,10 +465,11 @@
                 
                 
                 <h1 id="getting-started">Getting Started<a class="headerlink" href="#getting-started" title="Permanent link">¤</a></h1>
-<p>Connex is a small <a href="https://github.com/google/jax">JAX</a> library built on <a href="https://github.com/patrick-kidger/equinox">Equinox</a> inspired by two features of biological neural networks:</p>
+<p>Connex is a small <a href="https://github.com/google/jax">JAX</a> library built on <a href="https://github.com/patrick-kidger/equinox">Equinox</a> whose aim is to incorporate artificial analogues of biological neural network attributes into deep learning research and architecture design. Currently, this includes:</p>
 <ul>
 <li><strong>Complex Connectivity</strong>: Turn any directed acyclic graph (DAG) into a trainable neural network.</li>
 <li><strong>Plasticity</strong>: Add and remove both connections and neurons at the individual level.</li>
+<li><strong>Firing Modulation</strong>: Set and modify dropout probabilities for all neurons individually.</li>
 </ul>
 <h2 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">¤</a></h2>
 <div class="highlight"><pre><span></span><code>pip install connex
@@ -543,12 +544,15 @@
 <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_epochs</span><span class="p">):</span>
     <span class="n">network</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">loss</span> <span class="o">=</span> <span class="n">step</span><span class="p">(</span><span class="n">network</span><span class="p">,</span> <span class="n">optim</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
 </code></pre></div>
-<p>Now suppose we wish to add connections 1 &rarr; 6 and 2 &rarr; 11, and remove neuron 9:</p>
+<p>Now suppose we wish to add connections 1 &rarr; 6 and 2 &rarr; 11, remove neuron 9, and set the dropout probability of all hidden neurons to 0.1:</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># Add connections</span>
 <span class="n">network</span> <span class="o">=</span> <span class="n">cnx</span><span class="o">.</span><span class="n">add_connections</span><span class="p">(</span><span class="n">network</span><span class="p">,</span> <span class="p">[(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">6</span><span class="p">),</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">11</span><span class="p">)])</span>
 
 <span class="c1"># Remove neuron</span>
 <span class="n">network</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">cnx</span><span class="o">.</span><span class="n">remove_neurons</span><span class="p">(</span><span class="n">network</span><span class="p">,</span> <span class="p">[</span><span class="mi">9</span><span class="p">])</span>
+
+<span class="c1"># Set dropout probability</span>
+<span class="n">network</span><span class="o">.</span><span class="n">set_dropout_p</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>
 </code></pre></div>
 <p>That's all there is to it.  The parameters have been retained for neurons in the original network that have not been removed. <code>connex.remove_neurons</code> also returns auxiliary information about neuron ids, since removal of neurons re-numbers the remaining ones. </p>
 <p>For more information about manipulating connectivity structure and the <code>NeuralNetwork</code> base class, please see the API section of the documentation. For examples of subclassing <code>NeuralNetwork</code>, please see <code>connex.nn</code>.</p>
