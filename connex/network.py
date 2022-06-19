@@ -262,7 +262,8 @@ class NeuralNetwork(Module):
         
         **Returns**:
 
-        A 1D `jnp.array` where element `i` is the dropout probability of neuron `i`.
+        A 1D `jnp.array` with shape `((num_neurons,))` where element `i` is the  
+        dropout probability of neuron `i`.
         """
         dropout_p = eqxe.get_state(
             self.dropout_p, 
@@ -282,13 +283,16 @@ class NeuralNetwork(Module):
             dropout probability for neuron `i`. Note that this allows dropout to be 
             applied to input and output neurons as well.
         """
+        if isinstance(dropout_p, int):
+            # if user enters 0 or 1
+            dropout_p = float(dropout_p)
         if isinstance(dropout_p, float):
             dropout_p = jnp.ones((self.num_neurons,)) * dropout_p
             dropout_p = dropout_p.at[self.input_neurons].set(0.)
             dropout_p = dropout_p.at[self.output_neurons].set(0.)
         else:
             assert len(dropout_p) == self.num_neurons
-            dropout_p = jnp.array(dropout_p)
+            dropout_p = jnp.array(dropout_p, dtype=float)
         assert jnp.all(jnp.greater_equal(dropout_p, 0))
         assert jnp.all(jnp.less_equal(dropout_p, 1))
         eqxe.set_state(self.dropout_p, dropout_p)

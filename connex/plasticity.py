@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Mapping, Optional, Sequence, Tuple
+from typing import Callable, Dict, Mapping, Optional, Sequence, Tuple, Union
 
 import jax.nn as jnn
 import jax.numpy as jnp
@@ -12,7 +12,8 @@ def add_connections(
     network: NeuralNetwork,
     connections: Sequence[Tuple[int, int]],
     input_neurons: Optional[Sequence[int]] = None,
-    output_neurons: Optional[Sequence[int]] = None
+    output_neurons: Optional[Sequence[int]] = None,
+    dropout_p:  Optional[Union[float, Sequence[float]]] = None,
 ) -> NeuralNetwork:
     """Add connections to the network.
     
@@ -31,6 +32,12 @@ def add_connections(
         read from the output neurons in the order passed in here. Optional 
         argument. If `None`, the output neurons of the original network will
         be retained.
+    - `dropout_p`: Dropout probability. If a single `float`, the same dropout
+        probability will be applied to all hidden neurons. If a `Sequence[float]`,
+        the sequence must have length `num_neurons`, where `dropout_p[i]` is the
+        dropout probability for neuron `i`. Note that this allows dropout to be 
+        applied to input and output neurons as well. Optional argument. If `None`, 
+        the dropout probabilities of the original network will be retained.
 
     **Returns**:
 
@@ -47,14 +54,18 @@ def add_connections(
         input_neurons = network.input_neurons
     if output_neurons is None:
         output_neurons = network.output_neurons
+    if dropout_p is None:
+        dropout_p = network.get_dropout_p()
+    adjacency_dict = _adjacency_matrix_to_dict(adjacency_matrix)
 
     return NeuralNetwork(
         network.num_neurons,
-        _adjacency_matrix_to_dict(adjacency_matrix),
+        adjacency_dict,
         input_neurons,
         output_neurons,
         network.activation,
         network.output_activation,
+        dropout_p,
         network.seed,
         network.parameter_matrix
     )
@@ -64,7 +75,8 @@ def remove_connections(
     network: NeuralNetwork,
     connections: Sequence[Tuple[int, int]],
     input_neurons: Optional[Sequence[int]] = None,
-    output_neurons: Optional[Sequence[int]] = None
+    output_neurons: Optional[Sequence[int]] = None,
+    dropout_p:  Optional[Union[float, Sequence[float]]] = None,
 ) -> NeuralNetwork:
     """Remove connections from the network.
     
@@ -83,6 +95,12 @@ def remove_connections(
         read from the output neurons in the order passed in here. Optional 
         argument. If `None`, the output neurons of the original network will
         be retained.
+    - `dropout_p`: Dropout probability. If a single `float`, the same dropout
+        probability will be applied to all hidden neurons. If a `Sequence[float]`,
+        the sequence must have length `num_neurons`, where `dropout_p[i]` is the
+        dropout probability for neuron `i`. Note that this allows dropout to be 
+        applied to input and output neurons as well. Optional argument. If `None`, 
+        the dropout probabilities of the original network will be retained.
 
     **Returns**:
 
@@ -99,14 +117,18 @@ def remove_connections(
         input_neurons = network.input_neurons
     if output_neurons is None:
         output_neurons = network.output_neurons
+    if dropout_p is None:
+        dropout_p = network.get_dropout_p()
+    adjacency_dict = _adjacency_matrix_to_dict(adjacency_matrix)
 
     return NeuralNetwork(
         network.num_neurons,
-        _adjacency_matrix_to_dict(adjacency_matrix),
+        adjacency_dict,
         input_neurons,
         output_neurons,
         network.activation,
         network.output_activation,
+        dropout_p,
         network.seed,
         network.parameter_matrix
     )
@@ -130,6 +152,8 @@ def add_neurons(
             original network which the new neuron feeds into.
         * `'type'`: One of `{'input', 'hidden', 'output'}`. A `str` representing
             which group the new neuron belongs to.
+        * `'dropout_p'`: An `Optional[float]`, the dropout probability for the new neuron. 
+            Defaults to 0.
 
     **Returns**:
 
@@ -147,16 +171,17 @@ def add_neurons(
 
     input_neurons = network.input_neurons
     output_neurons = network.output_neurons
+    dropout_p = network.get_dropout_p()
     id = network.num_neurons
 
     for neuron_datum in new_neuron_data:
         in_neurons = neuron_datum['in_neurons']
         if in_neurons is not None:
-            in_neurons = jnp.array(neuron_datum['in_neurons'], dtype=int)
+            in_neurons = jnp.array(in_neurons, dtype=int)
             adjacency_matrix = adjacency_matrix.at[in_neurons, id].set(1)
         out_neurons = neuron_datum['out_neurons']
         if out_neurons is not None:
-            out_neurons = jnp.array(neuron_datum['out_neurons'])
+            out_neurons = jnp.array(out_neurons, dtype=int)
             adjacency_matrix = adjacency_matrix.at[id, out_neurons].set(1)
 
         type = neuron_datum['type']
@@ -166,6 +191,11 @@ def add_neurons(
         elif type == 'output':
             output_neurons = jnp.append(output_neurons, id)
 
+        _dropout_p = neuron_datum['dropout_p']
+        if _dropout_p is None:
+            _dropout_p = 0.
+        dropout_p = jnp.append(dropout_p, jnp.array(_dropout_p))
+        
         id += 1
 
     parameter_matrix = jr.normal(
@@ -179,12 +209,15 @@ def add_neurons(
         .at[:network.num_neurons, -1] \
         .set(network.parameter_matrix[:, -1])
 
+    adjacency_dict = _adjacency_matrix_to_dict(adjacency_matrix)
+
     _network = NeuralNetwork(
         total_num_neurons,
-        _adjacency_matrix_to_dict(adjacency_matrix),
+        adjacency_dict,
         input_neurons,
         output_neurons,
         network.activation,
+        dropout_p,
         network.output_activation,
         network.seed,
         parameter_matrix
@@ -235,18 +268,26 @@ def remove_neurons(network: NeuralNetwork, ids: Sequence[int],
     adjacency_matrix = jnp.delete(adjacency_matrix, ids, 0)
     adjacency_matrix = jnp.delete(adjacency_matrix, ids, 1)
 
+    # Adjust dropout
+    keep_original_idx = jnp.array(list(sorted(id_map.keys())), dtype=int)
+    dropout_p = network.get_dropout_p()
+    dropout_p = dropout_p[keep_original_idx] # .tolist() ?
+
     # Adjust parameter matrix
     parameter_matrix = network.parameter_matrix
     parameter_matrix = jnp.delete(parameter_matrix, ids, 0)
     parameter_matrix = jnp.delete(parameter_matrix, ids, 1)
 
+    adjacency_dict = _adjacency_matrix_to_dict(adjacency_matrix)
+
     network = NeuralNetwork(
         network.num_neurons - len(ids),
-        _adjacency_matrix_to_dict(adjacency_matrix),
+        adjacency_dict,
         input_neurons,
         output_neurons,
         network.activation,
         network.output_activation,
+        dropout_p,
         network.seed,
         parameter_matrix
     )
@@ -263,6 +304,7 @@ def connect_networks(
     output_neurons: Optional[Tuple[Sequence[int], Sequence[int]]] = None,
     activation: Callable = jnn.silu,
     output_activation: Callable = _identity,
+    dropout_p: Optional[Union[float, Sequence[float]]] = None,
     seed: int = 42,
     keep_parameters: bool = True,
 ) -> Tuple[NeuralNetwork, Dict[int, int]]:
@@ -295,6 +337,12 @@ def connect_networks(
         trainable `equinox.Module`.
     - `output_activation`: The activation function applied element-wise to 
         the  output neurons. It can itself be a trainable `equinox.Module`.
+    - `dropout_p`: Dropout probability. If a single `float`, the same dropout
+        probability will be applied to all hidden neurons. If a `Sequence[float]`,
+        the sequence must have length `num_neurons`, where `dropout_p[i]` is the
+        dropout probability for neuron `i`. Note that this allows dropout to be 
+        applied to input and output neurons as well. Optional argument. If `None`, 
+        defaults to the concatenation of `network1.dropout_p` and `network2.dropout_p`.
     - `seed`: The random seed used to initialize parameters.
     - `keep_parameters`: If `True`, copies the parameters of `network1` and `network2`
         to the appropriate parameter entries of the new network.
@@ -338,6 +386,13 @@ def connect_networks(
         _from_neuron = from_neuron + network1.num_neurons
         adjacency_matrix = adjacency_matrix.at[_from_neuron, to_neurons].set(1)
 
+    # Set dropout probabilities
+    if dropout_p is None:
+        dropout_p = jnp.append(
+            network1.get_dropout_p(), 
+            network2.get_dropout_p()
+        )
+
     # Initialize parameters iid ~ N(0, 0.01)
     parameter_matrix = jr.normal(
         jr.PRNGKey(seed), 
@@ -358,14 +413,18 @@ def connect_networks(
         parameter_matrix = parameter_matrix \
             .at[network1.num_neurons:, -1] \
             .set(network2.parameter_matrix[:, -1])
+
+    num_neurons = network1.num_neurons + network2.num_neurons
+    adjacency_dict = _adjacency_matrix_to_dict(adjacency_matrix)
     
     network = NeuralNetwork(
-        network1.num_neurons + network2.num_neurons,
-        _adjacency_matrix_to_dict(adjacency_matrix),
+        num_neurons,
+        adjacency_dict,
         input_neurons,
         output_neurons,
         activation,
         output_activation,
+        dropout_p,
         seed,
         parameter_matrix
     )
