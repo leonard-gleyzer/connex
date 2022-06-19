@@ -262,7 +262,7 @@ class NeuralNetwork(Module):
         
         **Returns**:
 
-        A 1D `jnp.array` with shape `((num_neurons,))` where element `i` 
+        A 1D `jnp.array` with shape `(num_neurons,)` where element `i` 
         is the dropout probability of neuron `i`.
         """
         dropout_p = eqxe.get_state(
