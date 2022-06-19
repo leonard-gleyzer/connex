@@ -17,7 +17,7 @@ Requires Python 3.7+, JAX 0.3.4+, and Equinox 0.5.2+.
 
 ## Documentation
 
-Available [here](https://leonard-gleyzer.github.io/connex/).
+Available at [https://leonard-gleyzer.github.io/connex/](https://leonard-gleyzer.github.io/connex/).
 
 ## Usage
 
