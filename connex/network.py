@@ -113,13 +113,13 @@ class NeuralNetwork(Module):
         order (see https://arxiv.org/pdf/1911.06904.pdf), with `jax.vmap` 
         vectorization used within each topological batch.
         
-        **Arguments**
+        **Arguments**:
         
         - `x`: The input array to the network for the forward pass. The individual
             values will be written to the input neurons in the order passed in during
             initialization.
 
-        **Returns**
+        **Returns**:
 
         The result array from the forward pass. The order of the array elements will be
         the order of the output neurons passed in during initialization.
@@ -262,8 +262,8 @@ class NeuralNetwork(Module):
         
         **Returns**:
 
-        A 1D `jnp.array` with shape `((num_neurons,))` where element `i` is the  
-        dropout probability of neuron `i`.
+        A 1D `jnp.array` with shape `((num_neurons,))` where element `i` 
+        is the dropout probability of neuron `i`.
         """
         dropout_p = eqxe.get_state(
             self.dropout_p, 
