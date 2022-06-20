@@ -145,7 +145,7 @@ def add_neurons(
     - `network`: A `NeuralNetwork` object
     - `new_neuron_data`: A sequence of dictionaries, where each dictionary 
         represents a new neuron to add to the network. Each dictionary must 
-        have 3 `str` fields:
+        have 4 `str` fields:
         * `'in_neurons'`: An `Optional[Sequence[int]]` indexing the neurons from the 
             original network that feed into the new neuron.
         * `'out_neurons'`: An `Optional[Sequence[int]]` indexing the neurons from the 
