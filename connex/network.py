@@ -1,3 +1,4 @@
+from time import time
 from typing import Callable, Mapping, Optional, Sequence, Union
 
 import equinox.experimental as eqxe
@@ -6,12 +7,10 @@ from equinox import Module, filter_jit, static_field
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
-from jax import vmap, lax
+from jax import jit, vmap, lax
 
-import numpy as np
-
-from .custom_types import Array
-from .utils import keygen, _adjacency_dict_to_matrix, _identity
+from custom_types import Array
+from utils import keygen, _adjacency_dict_to_matrix, _identity
 
 
 class NeuralNetwork(Module):
@@ -30,7 +29,7 @@ class NeuralNetwork(Module):
     input_neurons: jnp.array = static_field()
     output_neurons: jnp.array = static_field()
     num_neurons: int = static_field()
-    dropout_p: eqxe.StateIndex = static_field()
+    dropout_p: Union[jnp.array, eqxe.StateIndex] = static_field()
     seed: int = static_field()
 
     def __init__(
@@ -78,7 +77,7 @@ class NeuralNetwork(Module):
         self._check_input(num_neurons, adjacency_dict, input_neurons, output_neurons)
         self.adjacency_dict = adjacency_dict
         adjacency_matrix = _adjacency_dict_to_matrix(num_neurons, adjacency_dict)
-        self.topo_batches = self._topological_batching(adjacency_matrix)
+        self.topo_batches = self._topological_batching(adjacency_matrix, input_neurons)
         self.adjacency_matrix = adjacency_matrix
         self.input_neurons = input_neurons
         self.output_neurons = output_neurons
@@ -220,34 +219,38 @@ class NeuralNetwork(Module):
                 assert min(outputs) >= 0 and max(outputs) < num_neurons
 
 
-    def _topological_batching(self, adjacency_matrix: jnp.array,
+    def _topological_batching(
+        self, 
+        adjacency_matrix: jnp.array, 
+        input_neurons: jnp.array,
     ) -> Sequence[jnp.array]:
         """
         Topologically sort/batch neurons and also check that 
         the network is acyclic.
         """
-        inputs_per_neuron = np.sum(adjacency_matrix, axis=0)
-        neurons_with_no_input = np.argwhere(inputs_per_neuron == 0).flatten()
-        queue = list(neurons_with_no_input)
-        adjacency_matrix = np.copy(adjacency_matrix)
-        topo_batches = [list(neurons_with_no_input)]
-        while queue:
-            neuron = queue.pop(0)
-            outputs = np.argwhere(adjacency_matrix[neuron]).flatten()
-            adjacency_matrix[neuron, outputs] = 0
-            topo_batch = []
-            for output in outputs:
-                if np.all(adjacency_matrix[:, output] == 0):
-                    queue.append(output)
-                    topo_batch.append(output)
-            topo_batches.append(topo_batch)
-        topo_batches = [jnp.array(b) for b in topo_batches if b]
+        _sum = jit(lambda x: jnp.sum(x, axis=0))
+        queue = jnp.copy(input_neurons)
+        adjacency_matrix = jnp.copy(adjacency_matrix)
+        topo_batches = [jnp.copy(input_neurons)]
+
+        while jnp.size(queue) > 0:
+            t0 = time()
+            neuron, queue = queue[0], queue[1:]
+            outputs = jnp.argwhere(adjacency_matrix[neuron]).flatten()
+            adjacency_matrix = adjacency_matrix.at[neuron, outputs].set(0)
+            sums = _sum(adjacency_matrix[:, outputs])
+            idx = jnp.argwhere(sums == 0).flatten()
+            topo_batch = outputs[idx]
+            if jnp.size(topo_batch) > 0:
+                queue = jnp.append(queue, topo_batch)
+                topo_batches.append(topo_batch)
+            print(time() - t0)
 
         # Check that the graph is acyclic
-        row_sums = np.sum(adjacency_matrix, axis=1)
-        col_sums = np.sum(adjacency_matrix, axis=0)
-        bad_in_neurons = set(np.argwhere(col_sums).flatten())
-        bad_out_neurons = set(np.argwhere(row_sums).flatten())
+        row_sums = jnp.sum(adjacency_matrix, axis=1)
+        col_sums = _sum(adjacency_matrix)
+        bad_in_neurons = set(jnp.argwhere(col_sums).flatten())
+        bad_out_neurons = set(jnp.argwhere(row_sums).flatten())
         union = bad_in_neurons | bad_out_neurons
         assert len(union) == 0, f'Cycle(s) found involving neurons {union}'
 
