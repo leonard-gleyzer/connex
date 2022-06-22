@@ -229,7 +229,7 @@ class NeuralNetwork(Module):
         Topologically sort/batch neurons and also check that 
         the network is acyclic.
         """
-        sum_axis_0 = jit(lambda x: jnp.sum(x, axis=0))
+        _col_sums = jit(lambda x: jnp.sum(x, axis=0))
         queue = input_neurons
         adjacency_matrix = adjacency_matrix
         topo_batches = [input_neurons]
@@ -238,7 +238,7 @@ class NeuralNetwork(Module):
             neuron, queue = queue[0], queue[1:]
             outputs = jnp.argwhere(adjacency_matrix[neuron]).flatten()
             adjacency_matrix = adjacency_matrix.at[neuron, outputs].set(0)
-            sums = sum_axis_0(adjacency_matrix[:, outputs])
+            sums = _col_sums(adjacency_matrix[:, outputs])
             idx = jnp.argwhere(sums == 0).flatten()
             topo_batch = outputs[idx]
             if jnp.size(topo_batch) > 0:
@@ -247,7 +247,7 @@ class NeuralNetwork(Module):
 
         # Check that the graph is acyclic
         row_sums = jnp.sum(adjacency_matrix, axis=1)
-        col_sums = sum_axis_0(adjacency_matrix)
+        col_sums = _col_sums(adjacency_matrix)
         bad_in_neurons = set(jnp.argwhere(col_sums).flatten().tolist())
         bad_out_neurons = set(jnp.argwhere(row_sums).flatten().tolist())
         union = bad_in_neurons | bad_out_neurons
