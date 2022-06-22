@@ -116,6 +116,7 @@ class NeuralNetwork(Module):
         - `x`: The input array to the network for the forward pass. The individual
             values will be written to the input neurons in the order passed in during
             initialization.
+
         **Returns**:
         The result array from the forward pass. The order of the array elements will be
         the order of the output neurons passed in during initialization.
