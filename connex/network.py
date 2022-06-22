@@ -1,4 +1,3 @@
-from time import time
 from typing import Callable, Mapping, Optional, Sequence, Union
 
 import equinox.experimental as eqxe
