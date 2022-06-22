@@ -507,33 +507,31 @@ this.</p>
 
     <div class="doc doc-contents ">
 
-      <p><strong>Arguments:</strong></p>
-<ul>
-<li><code>num_neurons</code>: The number of neurons in the network.</li>
-<li><code>adjacency_dict</code>: A dictionary that maps a neuron id to the ids of its
+      <p><strong>Arguments:</strong>
+- <code>num_neurons</code>: The number of neurons in the network.
+- <code>adjacency_dict</code>: A dictionary that maps a neuron id to the ids of its
     outputs. Neurons must be ordered from <code>0</code> to <code>num_neurons - 1</code>. Neurons
-    with no outgoing connections do not need to be included.</li>
-<li><code>input_neurons</code>: A sequence of <code>int</code> indicating the ids of the 
+    with no outgoing connections do not need to be included.
+- <code>input_neurons</code>: A sequence of <code>int</code> indicating the ids of the 
     input neurons. The order here matters, as the input data will be
-    passed into the input neurons in the order passed in here.</li>
-<li><code>output_neurons</code>: A sequence of <code>int</code> indicating the ids of the 
+    passed into the input neurons in the order passed in here.
+- <code>output_neurons</code>: A sequence of <code>int</code> indicating the ids of the 
     output neurons. The order here matters, as the output data will be
-    read from the output neurons in the order passed in here.</li>
-<li><code>activation</code>: The activation function applied element-wise to the 
+    read from the output neurons in the order passed in here.
+- <code>activation</code>: The activation function applied element-wise to the 
     hidden (i.e. non-input, non-output) neurons. It can itself be a 
-    trainable <code>equinox.Module</code>.</li>
-<li><code>output_activation</code>: The activation function applied element-wise to 
-    the  output neurons. It can itself be a trainable <code>equinox.Module</code>.</li>
-<li><code>dropout_p</code>: Dropout probability. If a single <code>float</code>, the same dropout
+    trainable <code>equinox.Module</code>.
+- <code>output_activation</code>: The activation function applied element-wise to 
+    the  output neurons. It can itself be a trainable <code>equinox.Module</code>.
+- <code>dropout_p</code>: Dropout probability. If a single <code>float</code>, the same dropout
     probability will be applied to all hidden neurons. If a <code>Sequence[float]</code>,
     the sequence must have length <code>num_neurons</code>, where <code>dropout_p[i]</code> is the
     dropout probability for neuron <code>i</code>. Note that this allows dropout to be 
-    applied to input and output neurons as well.</li>
-<li><code>seed</code>: The random seed used to initialize parameters.</li>
-<li><code>parameter_matrix</code>: A <code>jnp.array</code> of shape <code>(N, N + 1)</code> where entry <code>[i, j]</code> is 
+    applied to input and output neurons as well.
+- <code>seed</code>: The random seed used to initialize parameters.
+- <code>parameter_matrix</code>: A <code>jnp.array</code> of shape <code>(N, N + 1)</code> where entry <code>[i, j]</code> is 
     neuron <code>i</code>'s weight for neuron <code>j</code>, and entry <code>[i, N]</code> is neuron <code>i</code>'s bias. 
-    Optional argument -- used primarily for plasticity functionality.</li>
-</ul>
+    Optional argument -- used primarily for plasticity functionality.</p>
 
     </div>
 
@@ -560,11 +558,11 @@ vectorization used within each topological batch.</p>
 <ul>
 <li><code>x</code>: The input array to the network for the forward pass. The individual
     values will be written to the input neurons in the order passed in during
-    initialization.</li>
+    initialization.
+<strong>Returns</strong>:
+The result array from the forward pass. The order of the array elements will be
+the order of the output neurons passed in during initialization.</li>
 </ul>
-<p><strong>Returns</strong>:</p>
-<p>The result array from the forward pass. The order of the array elements will be
-the order of the output neurons passed in during initialization.</p>
 
     </div>
 
@@ -586,7 +584,7 @@ the order of the output neurons passed in during initialization.</p>
 
       <p>Get the per-neuron dropout probabilities.</p>
 <p><strong>Returns</strong>:</p>
-<p>A 1D <code>jnp.array</code> with shape <code>(num_neurons,)</code> where element <code>i</code> 
+<p>A <code>jnp.array</code> with shape <code>(num_neurons,)</code> where element <code>i</code> 
 is the dropout probability of neuron <code>i</code>.</p>
 
     </div>
