@@ -228,29 +228,27 @@ class NeuralNetwork(Module):
         Topologically sort/batch neurons and also check that 
         the network is acyclic.
         """
-        _sum = jit(lambda x: jnp.sum(x, axis=0))
+        sum_axis_0 = jit(lambda x: jnp.sum(x, axis=0))
         queue = jnp.copy(input_neurons)
         adjacency_matrix = jnp.copy(adjacency_matrix)
         topo_batches = [jnp.copy(input_neurons)]
 
         while jnp.size(queue) > 0:
-            t0 = time()
             neuron, queue = queue[0], queue[1:]
             outputs = jnp.argwhere(adjacency_matrix[neuron]).flatten()
             adjacency_matrix = adjacency_matrix.at[neuron, outputs].set(0)
-            sums = _sum(adjacency_matrix[:, outputs])
+            sums = sum_axis_0(adjacency_matrix[:, outputs])
             idx = jnp.argwhere(sums == 0).flatten()
             topo_batch = outputs[idx]
             if jnp.size(topo_batch) > 0:
                 queue = jnp.append(queue, topo_batch)
                 topo_batches.append(topo_batch)
-            print(time() - t0)
 
         # Check that the graph is acyclic
         row_sums = jnp.sum(adjacency_matrix, axis=1)
-        col_sums = _sum(adjacency_matrix)
-        bad_in_neurons = set(jnp.argwhere(col_sums).flatten())
-        bad_out_neurons = set(jnp.argwhere(row_sums).flatten())
+        col_sums = sum_axis_0(adjacency_matrix)
+        bad_in_neurons = set(jnp.argwhere(col_sums).flatten().tolist())
+        bad_out_neurons = set(jnp.argwhere(row_sums).flatten().tolist())
         union = bad_in_neurons | bad_out_neurons
         assert len(union) == 0, f'Cycle(s) found involving neurons {union}'
 
@@ -261,7 +259,8 @@ class NeuralNetwork(Module):
         """Get the per-neuron dropout probabilities.
         
         **Returns**:
-        A 1D `jnp.array` with shape `(num_neurons,)` where element `i` 
+
+        A `jnp.array` with shape `(num_neurons,)` where element `i` 
         is the dropout probability of neuron `i`.
         """
         dropout_p = eqxe.get_state(
@@ -275,14 +274,14 @@ class NeuralNetwork(Module):
         """Set the per-neuron dropout probabilities.
         
         **Arguments**:
+
         - `dropout_p`: Dropout probability. If a single `float`, the same dropout
             probability will be applied to all hidden neurons. If a `Sequence[float]`,
             the sequence must have length `num_neurons`, where `dropout_p[i]` is the
             dropout probability for neuron `i`. Note that this allows dropout to be 
             applied to input and output neurons as well.
         """
-        if isinstance(dropout_p, int):
-            # if user enters 0 or 1
+        if dropout_p == 0 or dropout_p == 1:
             dropout_p = float(dropout_p)
         if isinstance(dropout_p, float):
             dropout_p = jnp.ones((self.num_neurons,)) * dropout_p
