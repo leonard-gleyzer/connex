@@ -235,7 +235,6 @@ class NeuralNetwork(Module):
         topo_batches = [input_neurons]
 
         while jnp.size(queue) > 0:
-            t0 = time()
             neuron, queue = queue[0], queue[1:]
             outputs = jnp.argwhere(adjacency_matrix[neuron]).flatten()
             adjacency_matrix = adjacency_matrix.at[neuron, outputs].set(0)
@@ -245,7 +244,6 @@ class NeuralNetwork(Module):
             if jnp.size(topo_batch) > 0:
                 queue = jnp.append(queue, topo_batch)
                 topo_batches.append(topo_batch)
-            print(time()-t0)
 
         # Check that the graph is acyclic
         row_sums = jnp.sum(adjacency_matrix, axis=1)
