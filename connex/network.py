@@ -47,7 +47,6 @@ class NeuralNetwork(Module):
         **kwargs,
     ):
         """**Arguments:**
-
         - `num_neurons`: The number of neurons in the network.
         - `adjacency_dict`: A dictionary that maps a neuron id to the ids of its
             outputs. Neurons must be ordered from `0` to `num_neurons - 1`. Neurons
@@ -118,9 +117,7 @@ class NeuralNetwork(Module):
         - `x`: The input array to the network for the forward pass. The individual
             values will be written to the input neurons in the order passed in during
             initialization.
-
         **Returns**:
-
         The result array from the forward pass. The order of the array elements will be
         the order of the output neurons passed in during initialization.
         """
@@ -261,7 +258,6 @@ class NeuralNetwork(Module):
         """Get the per-neuron dropout probabilities.
         
         **Returns**:
-
         A 1D `jnp.array` with shape `(num_neurons,)` where element `i` 
         is the dropout probability of neuron `i`.
         """
@@ -276,7 +272,6 @@ class NeuralNetwork(Module):
         """Set the per-neuron dropout probabilities.
         
         **Arguments**:
-
         - `dropout_p`: Dropout probability. If a single `float`, the same dropout
             probability will be applied to all hidden neurons. If a `Sequence[float]`,
             the sequence must have length `num_neurons`, where `dropout_p[i]` is the
