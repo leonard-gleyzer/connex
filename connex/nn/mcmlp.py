@@ -42,7 +42,7 @@ class MCMLP(NeuralNetwork):
         input_neurons = jnp.arange(input_size)
         output_neurons_start = num_neurons - output_size
         output_neurons = jnp.arange(output_size) + output_neurons_start
-        adjacency_dict = {n: [] for n in range(num_neurons)}
+        adjacency_dict = {}
         layer_sizes = [input_size] + ([width] * depth) + [output_size]
         neuron = 0
         for layer_size in layer_sizes[:-1]:
