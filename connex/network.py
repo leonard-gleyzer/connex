@@ -280,8 +280,6 @@ class NeuralNetwork(Module):
             dropout probability for neuron `i`. Note that this allows dropout to be 
             applied to input and output neurons as well.
         """
-        if dropout_p in {0, 1}:
-            dropout_p = float(dropout_p)
         if isinstance(dropout_p, float):
             dropout_p = jnp.ones((self.num_neurons,)) * dropout_p
             dropout_p = dropout_p.at[self.input_neurons].set(0.)
