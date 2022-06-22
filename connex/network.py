@@ -228,9 +228,9 @@ class NeuralNetwork(Module):
         the network is acyclic.
         """
         sum_axis_0 = jit(lambda x: jnp.sum(x, axis=0))
-        queue = jnp.copy(input_neurons)
-        adjacency_matrix = jnp.copy(adjacency_matrix)
-        topo_batches = [jnp.copy(input_neurons)]
+        queue = input_neurons
+        adjacency_matrix = adjacency_matrix
+        topo_batches = [input_neurons]
 
         while jnp.size(queue) > 0:
             neuron, queue = queue[0], queue[1:]
