@@ -3,14 +3,14 @@ from typing import Callable, Mapping, Optional, Sequence, Union
 import equinox.experimental as eqxe
 from equinox import Module, filter_jit, static_field
 
-import jax
+
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
 from jax import jit, vmap, lax
 
 from .custom_types import Array
-from .utils import keygen, _adjacency_dict_to_matrix, _identity
+from .utils import keygen, PRNGKey, _adjacency_dict_to_matrix, _identity
 
 
 class NeuralNetwork(Module):
@@ -30,7 +30,7 @@ class NeuralNetwork(Module):
     output_neurons: jnp.array = static_field()
     num_neurons: int = static_field()
     dropout_p: Union[jnp.array, eqxe.StateIndex] = static_field()
-    key: jr.PRNGKey = static_field()
+    key: PRNGKey = static_field()
 
     def __init__(
         self,
@@ -41,7 +41,7 @@ class NeuralNetwork(Module):
         activation: Callable = jnn.silu,
         output_activation: Callable = _identity,
         dropout_p: Union[float, Sequence[float]] = 0.,
-        key: "jax.random.PRNGKey" = jr.PRNGKey(0),
+        key: jr.PRNGKey = jr.PRNGKey(0),
         parameter_matrix: Optional[Array] = None,
         **kwargs,
     ):

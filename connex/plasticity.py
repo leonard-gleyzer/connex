@@ -1,12 +1,11 @@
 from typing import Callable, Dict, Mapping, Optional, Sequence, Tuple, Union
 
-import jax
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
 
 from .network import NeuralNetwork
-from .utils import _adjacency_matrix_to_dict, _identity
+from .utils import PRNGKey, _adjacency_matrix_to_dict, _identity
 
 
 def add_connections(
@@ -305,7 +304,7 @@ def connect_networks(
     activation: Callable = jnn.silu,
     output_activation: Callable = _identity,
     dropout_p: Optional[Union[float, Sequence[float]]] = None,
-    key: "jax.random.PRNGKey" = jr.PRNGKey(42),
+    key: jr.PRNGKey = jr.PRNGKey(42),
     keep_parameters: bool = True,
 ) -> Tuple[NeuralNetwork, Dict[int, int]]:
     """Connect two networks together in a specified manner.

@@ -18,8 +18,13 @@ if getattr(typing, "GENERATING_DOCUMENTATION", False):
     def silu(_):
         pass
 
+    PRNGKey = jr.PRNGKey
+
     jnn.silu = silu
     _identity.__qualname__ = "identity"
+
+    jr.PRNGKey = PRNGKey
+    PRNGKey.__qualname__ = "jax.random.PRNGKey"
 
 
 # The following two functions are used to switch between adjacency dicts and
