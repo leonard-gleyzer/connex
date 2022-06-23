@@ -1,5 +1,6 @@
 from typing import Callable, Dict, Mapping, Optional, Sequence, Tuple, Union
 
+import jax
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
