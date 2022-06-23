@@ -1,11 +1,11 @@
-from typing import Callable
+from typing import Callable, Optional
 
 import jax.numpy as jnp
 import jax.nn as jnn
 import jax.random as jr
 
 from .. import NeuralNetwork
-from ..utils import PRNGKey, _identity
+from ..utils import _identity
 
 class MLP(NeuralNetwork):
     """
@@ -20,7 +20,7 @@ class MLP(NeuralNetwork):
         depth: int,
         activation: Callable = jnn.silu,
         output_activation: Callable = _identity,
-        key: PRNGKey = jr.PRNGKey(0),
+        key: Optional[jr.PRNGKey] = None,
         **kwargs,
     ):
         """**Arguments**:
@@ -34,8 +34,10 @@ class MLP(NeuralNetwork):
             trainable equinox Module.
         - `output_activation`: The activation function applied element-wise to 
             the  output neurons. It can itself be a trainable equinox Module.
-        - `seed`: The random seed used to initialize parameters.
+        - `key`: The `PRNGKey` used to initialize parameters. Optional argument. 
+            Defaults to `jax.random.PRNGKey(0)`.
         """
+        key = key if key is not None else jr.PRNGKey(0)
         num_neurons = width * depth + input_size + output_size
         input_neurons = jnp.arange(input_size)
         output_neurons_start = num_neurons - output_size

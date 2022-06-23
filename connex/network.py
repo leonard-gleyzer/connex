@@ -10,7 +10,7 @@ import jax.random as jr
 from jax import jit, vmap, lax
 
 from .custom_types import Array
-from .utils import keygen, PRNGKey, _adjacency_dict_to_matrix, _identity
+from .utils import keygen, _adjacency_dict_to_matrix, _identity
 
 
 class NeuralNetwork(Module):
@@ -30,7 +30,7 @@ class NeuralNetwork(Module):
     output_neurons: jnp.array = static_field()
     num_neurons: int = static_field()
     dropout_p: Union[jnp.array, eqxe.StateIndex] = static_field()
-    key: PRNGKey = static_field()
+    key: jr.PRNGKey = static_field()
 
     def __init__(
         self,
@@ -41,7 +41,7 @@ class NeuralNetwork(Module):
         activation: Callable = jnn.silu,
         output_activation: Callable = _identity,
         dropout_p: Union[float, Sequence[float]] = 0.,
-        key: jr.PRNGKey = jr.PRNGKey(0),
+        key: Optional[jr.PRNGKey] = None,
         parameter_matrix: Optional[Array] = None,
         **kwargs,
     ):
@@ -67,7 +67,8 @@ class NeuralNetwork(Module):
             the sequence must have length `num_neurons`, where `dropout_p[i]` is the
             dropout probability for neuron `i`. Note that this allows dropout to be 
             applied to input and output neurons as well.
-        - `key`: The `PRNGKey` used to initialize parameters.
+        - `key`: The `PRNGKey` used to initialize parameters. Optional argument. Defaults
+            to `jax.random.PRNGKey(0)`.
         - `parameter_matrix`: A `jnp.array` of shape `(N, N + 1)` where entry `[i, j]` is 
             neuron `i`'s weight for neuron `j`, and entry `[i, N]` is neuron `i`'s bias. 
             Optional argument -- used primarily for plasticity functionality.
@@ -85,7 +86,7 @@ class NeuralNetwork(Module):
         self.num_neurons = num_neurons
         self.activation = activation
         self.output_activation = output_activation
-        self.key = key
+        self.key = key if key is not None else jr.PRNGKey(0)
 
         # Set dropout probabilities. We use eqxe.StateIndex here so that
         # dropout probabilities can later be modified, if desired.

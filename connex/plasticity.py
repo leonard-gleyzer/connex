@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import jax.random as jr
 
 from .network import NeuralNetwork
-from .utils import PRNGKey, _adjacency_matrix_to_dict, _identity
+from .utils import _adjacency_matrix_to_dict, _identity
 
 
 def add_connections(
@@ -304,7 +304,7 @@ def connect_networks(
     activation: Callable = jnn.silu,
     output_activation: Callable = _identity,
     dropout_p: Optional[Union[float, Sequence[float]]] = None,
-    key: jr.PRNGKey = jr.PRNGKey(42),
+    key: Optional[jr.PRNGKey] = None,
     keep_parameters: bool = True,
 ) -> Tuple[NeuralNetwork, Dict[int, int]]:
     """Connect two networks together in a specified manner.
@@ -343,7 +343,8 @@ def connect_networks(
         applied to input and output neurons as well. Optional argument. If `None`, 
         defaults to the concatenation of `network1.get_dropout_p()` and 
         `network2.get_dropout_p()`.
-    - `key`: The `PRNGKey` used to initialize parameters.
+    - `key`: The `PRNGKey` used to initialize parameters. Optional argument. Defaults
+        to `jax.random.PRNGKey(42)`.
     - `keep_parameters`: If `True`, copies the parameters of `network1` and `network2`
         to the appropriate parameter entries of the new network.
 
@@ -415,6 +416,7 @@ def connect_networks(
 
     num_neurons = network1.num_neurons + network2.num_neurons
     adjacency_dict = _adjacency_matrix_to_dict(adjacency_matrix)
+    key = key if key is not None else jr.PRNGKey(42)
     
     network = NeuralNetwork(
         num_neurons,
