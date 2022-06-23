@@ -395,7 +395,7 @@ def connect_networks(
 
     # Initialize parameters iid ~ N(0, 0.01)
     parameter_matrix = jr.normal(
-        network.key, (num_neurons, num_neurons + 1)
+        key, (num_neurons, num_neurons + 1)
     ) * 0.1
 
     if keep_parameters:
