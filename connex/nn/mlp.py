@@ -1,5 +1,6 @@
 from typing import Callable
 
+import jax
 import jax.numpy as jnp
 import jax.nn as jnn
 import jax.random as jr
@@ -20,7 +21,7 @@ class MLP(NeuralNetwork):
         depth: int,
         activation: Callable = jnn.silu,
         output_activation: Callable = _identity,
-        key: jr.PRNGKey = jr.PRNGKey(0),
+        key: "jax.random.PRNGKey" = jr.PRNGKey(0),
         **kwargs,
     ):
         """**Arguments**:
