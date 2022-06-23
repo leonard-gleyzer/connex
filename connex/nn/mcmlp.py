@@ -2,6 +2,7 @@ from typing import Callable
 
 import jax.numpy as jnp
 import jax.nn as jnn
+import jax.random as jr
 
 from .. import NeuralNetwork
 from ..utils import _identity
@@ -20,9 +21,9 @@ class MCMLP(NeuralNetwork):
         output_size: int,
         width: int,
         depth: int,
-        activation: Callable=jnn.silu,
-        output_activation: Callable=_identity,
-        seed: int=0,
+        activation: Callable = jnn.silu,
+        output_activation: Callable = _identity,
+        key: jr.PRNGKey = jr.PRNGKey(0),
         **kwargs,
     ):
         """**Arguments**:
@@ -59,6 +60,6 @@ class MCMLP(NeuralNetwork):
             output_neurons,
             activation,
             output_activation,
-            seed=seed,
+            key=key,
             **kwargs
         )
