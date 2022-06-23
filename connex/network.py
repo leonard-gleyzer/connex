@@ -40,7 +40,7 @@ class NeuralNetwork(Module):
         activation: Callable = jnn.silu,
         output_activation: Callable = _identity,
         dropout_p: Union[float, Sequence[float]] = 0.,
-        key: jr.PRNGKey = jr.PRNGKey(0),
+        key: "jax.random.PRNGKey" = jr.PRNGKey(0),
         parameter_matrix: Optional[Array] = None,
         **kwargs,
     ):

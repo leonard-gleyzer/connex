@@ -304,7 +304,7 @@ def connect_networks(
     activation: Callable = jnn.silu,
     output_activation: Callable = _identity,
     dropout_p: Optional[Union[float, Sequence[float]]] = None,
-    key: jr.PRNGKey = jr.PRNGKey(42),
+    key: "jax.random.PRNGKey" = jr.PRNGKey(42),
     keep_parameters: bool = True,
 ) -> Tuple[NeuralNetwork, Dict[int, int]]:
     """Connect two networks together in a specified manner.
