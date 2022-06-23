@@ -344,7 +344,7 @@ def connect_networks(
         defaults to the concatenation of `network1.get_dropout_p()` and 
         `network2.get_dropout_p()`.
     - `key`: The `PRNGKey` used to initialize parameters. Optional argument. Defaults
-        to `jax.random.PRNGKey(42)`.
+        to `jax.random.PRNGKey(0)`.
     - `keep_parameters`: If `True`, copies the parameters of `network1` and `network2`
         to the appropriate parameter entries of the new network.
 
@@ -354,6 +354,9 @@ def connect_networks(
     A dictionary mapping neuron ids from `network2` to their respective 
     ids in the new network. The `network1` ids are left unchanged.
     """
+    # Set key. Done this way for nicer docs.
+    key = key if key is not None else jr.PRNGKey(0)
+
     # Set input and output neurons
     if input_neurons is None:
         input_neurons = [network1.input_neurons, network2.input_neurons]
@@ -416,7 +419,6 @@ def connect_networks(
 
     num_neurons = network1.num_neurons + network2.num_neurons
     adjacency_dict = _adjacency_matrix_to_dict(adjacency_matrix)
-    key = key if key is not None else jr.PRNGKey(42)
     
     network = NeuralNetwork(
         num_neurons,
