@@ -25,7 +25,7 @@ def test_topological_batching():
     
 
 def test_training():
-    cnx_mlp = cnx.nn.MLP(1, 1, 16, 1, jnn.relu, seed=0)
+    cnx_mlp = cnx.nn.MLP(1, 1, 16, 1, jnn.relu)
     eqx_mlp = eqx.nn.MLP(1, 1, 16, 1, jnn.relu, key=jr.PRNGKey(0))
 
     cnx_optim = optax.adam(1e-3)
@@ -62,7 +62,7 @@ def test_training():
     
 def test_nn_activation_functions():
     eqx_mlp = eqx.nn.MLP(1, 1, 16, 2, jnn.silu, key=jr.PRNGKey(0))
-    cnx_mlp = cnx.nn.MLP(1, 1, 16, 2, eqx_mlp, eqx_mlp, seed=0)
+    cnx_mlp = cnx.nn.MLP(1, 1, 16, 2, eqx_mlp, eqx_mlp)
 
     optim = optax.adam(1e-3)
     opt_state = optim.init(eqx.filter(cnx_mlp, eqx.is_array))

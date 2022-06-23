@@ -66,7 +66,7 @@ def add_connections(
         network.activation,
         network.output_activation,
         dropout_p,
-        network.seed,
+        network.key,
         network.parameter_matrix
     )
 
@@ -129,7 +129,7 @@ def remove_connections(
         network.activation,
         network.output_activation,
         dropout_p,
-        network.seed,
+        network.key,
         network.parameter_matrix
     )
 
@@ -199,8 +199,7 @@ def add_neurons(
         id += 1
 
     parameter_matrix = jr.normal(
-        jr.PRNGKey(network.seed),
-        (total_num_neurons, total_num_neurons + 1)
+        network.key, (total_num_neurons, total_num_neurons + 1)
     ) * 0.1
     parameter_matrix = parameter_matrix \
         .at[:network.num_neurons, :network.num_neurons] \
@@ -219,7 +218,7 @@ def add_neurons(
         network.activation,
         network.output_activation,
         dropout_p,
-        network.seed,
+        network.key,
         parameter_matrix
     )
 
@@ -288,7 +287,7 @@ def remove_neurons(network: NeuralNetwork, ids: Sequence[int],
         network.activation,
         network.output_activation,
         dropout_p,
-        network.seed,
+        network.key,
         parameter_matrix
     )
 
@@ -305,7 +304,7 @@ def connect_networks(
     activation: Callable = jnn.silu,
     output_activation: Callable = _identity,
     dropout_p: Optional[Union[float, Sequence[float]]] = None,
-    seed: int = 42,
+    key: jr.PRNGKey = jr.PRNGKey(42),
     keep_parameters: bool = True,
 ) -> Tuple[NeuralNetwork, Dict[int, int]]:
     """Connect two networks together in a specified manner.
@@ -344,7 +343,7 @@ def connect_networks(
         applied to input and output neurons as well. Optional argument. If `None`, 
         defaults to the concatenation of `network1.get_dropout_p()` and 
         `network2.get_dropout_p()`.
-    - `seed`: The random seed used to initialize parameters.
+    - `key`: The `PRNGKey` used to initialize parameters.
     - `keep_parameters`: If `True`, copies the parameters of `network1` and `network2`
         to the appropriate parameter entries of the new network.
 
@@ -396,8 +395,7 @@ def connect_networks(
 
     # Initialize parameters iid ~ N(0, 0.01)
     parameter_matrix = jr.normal(
-        jr.PRNGKey(seed), 
-        (num_neurons, num_neurons + 1)
+        network.key, (num_neurons, num_neurons + 1)
     ) * 0.1
 
     if keep_parameters:
@@ -426,7 +424,7 @@ def connect_networks(
         activation,
         output_activation,
         dropout_p,
-        seed,
+        key,
         parameter_matrix
     )
 

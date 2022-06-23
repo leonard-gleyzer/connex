@@ -29,7 +29,7 @@ class NeuralNetwork(Module):
     output_neurons: jnp.array = static_field()
     num_neurons: int = static_field()
     dropout_p: Union[jnp.array, eqxe.StateIndex] = static_field()
-    seed: int = static_field()
+    key: jr.PRNGKey = static_field()
 
     def __init__(
         self,
@@ -40,7 +40,7 @@ class NeuralNetwork(Module):
         activation: Callable = jnn.silu,
         output_activation: Callable = _identity,
         dropout_p: Union[float, Sequence[float]] = 0.,
-        seed: int = 0,
+        key: jr.PRNGKey = jr.PRNGKey(0),
         parameter_matrix: Optional[Array] = None,
         **kwargs,
     ):
@@ -66,7 +66,7 @@ class NeuralNetwork(Module):
             the sequence must have length `num_neurons`, where `dropout_p[i]` is the
             dropout probability for neuron `i`. Note that this allows dropout to be 
             applied to input and output neurons as well.
-        - `seed`: The random seed used to initialize parameters.
+        - `key`: The `PRNGKey` used to initialize parameters.
         - `parameter_matrix`: A `jnp.array` of shape `(N, N + 1)` where entry `[i, j]` is 
             neuron `i`'s weight for neuron `j`, and entry `[i, N]` is neuron `i`'s bias. 
             Optional argument -- used primarily for plasticity functionality.
@@ -84,7 +84,7 @@ class NeuralNetwork(Module):
         self.num_neurons = num_neurons
         self.activation = activation
         self.output_activation = output_activation
-        self.seed = seed
+        self.key = key
 
         # Set dropout probabilities. We use eqxe.StateIndex here so that
         # dropout probabilities can later be modified, if desired.
@@ -95,8 +95,7 @@ class NeuralNetwork(Module):
         if parameter_matrix is None:
             # Initialize parameters as being drawn iid ~ N(0, 0.01)
             parameter_matrix = jr.normal(
-                jr.PRNGKey(seed),
-                (self.num_neurons, self.num_neurons + 1)
+                key, (self.num_neurons, self.num_neurons + 1)
             ) * 0.1
         shape = parameter_matrix.shape
         assert len(shape) == 2
