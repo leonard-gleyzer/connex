@@ -44,7 +44,7 @@ class NeuralNetwork(Module):
         parameter_matrix: Optional[Array] = None,
         **kwargs,
     ):
-        """**Arguments:**
+        """**Arguments**:
 
         - `num_neurons`: The number of neurons in the network.
         - `adjacency_dict`: A dictionary that maps a neuron id to the ids of its
