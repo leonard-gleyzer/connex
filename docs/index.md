@@ -16,7 +16,7 @@ Requires Python 3.7+, JAX 0.3.4+, and Equinox 0.5.2+.
 
 ## Usage
 
-Suppose we would like to create a trainable neural network from the following DAG 
+As a toy example, suppose we would like to create a trainable neural network from the following DAG 
 
 ![dag](https://www.mdpi.com/algorithms/algorithms-13-00256/article_deploy/html/images/algorithms-13-00256-g001.png)
 
