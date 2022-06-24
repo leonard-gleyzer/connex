@@ -3,7 +3,6 @@ from typing import Callable, Mapping, Optional, Sequence, Union
 import equinox.experimental as eqxe
 from equinox import Module, filter_jit, static_field
 
-
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
