@@ -704,7 +704,7 @@ ids in the new network.</p>
     defaults to the concatenation of <code>network1.get_dropout_p()</code> and 
     <code>network2.get_dropout_p()</code>.</li>
 <li><code>key</code>: The <code>PRNGKey</code> used to initialize parameters. Optional argument. Defaults
-    to <code>jax.random.PRNGKey(42)</code>.</li>
+    to <code>jax.random.PRNGKey(0)</code>.</li>
 <li><code>keep_parameters</code>: If <code>True</code>, copies the parameters of <code>network1</code> and <code>network2</code>
     to the appropriate parameter entries of the new network.</li>
 </ul>
