@@ -232,7 +232,6 @@ class NeuralNetwork(Module):
         """
         _col_sums = jit(lambda x: jnp.sum(x, axis=0))
         queue = input_neurons
-        adjacency_matrix = adjacency_matrix
         topo_batches = [input_neurons]
 
         while jnp.size(queue) > 0:
