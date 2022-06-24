@@ -28,7 +28,7 @@ class NeuralNetwork(Module):
     input_neurons: jnp.array = static_field()
     output_neurons: jnp.array = static_field()
     num_neurons: int = static_field()
-    dropout_p: Union[jnp.array, eqxe.StateIndex] = static_field()
+    dropout_p: eqxe.StateIndex = static_field()
     key: jr.PRNGKey = static_field()
 
     def __init__(
