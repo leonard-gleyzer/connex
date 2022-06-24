@@ -21,7 +21,7 @@ Available at [https://leonard-gleyzer.github.io/connex/](https://leonard-gleyzer
 
 ## Usage
 
-As a toy example, suppose we would like to create a trainable neural network from the following DAG 
+As a small example, let's create a trainable neural network from the following DAG 
 
 ![dag](https://www.mdpi.com/algorithms/algorithms-13-00256/article_deploy/html/images/algorithms-13-00256-g001.png)
 
