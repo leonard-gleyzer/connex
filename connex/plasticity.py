@@ -150,7 +150,7 @@ def add_neurons(
             original network that feed into the new neuron.
         * `'out_neurons'`: An `Optional[Sequence[int]]` indexing the neurons from the 
             original network which the new neuron feeds into.
-        * `'type'`: One of `{'input', 'hidden', 'output'}`. A `str` representing
+        * `'group'`: One of `{'input', 'hidden', 'output'}`. A `str` representing
             which group the new neuron belongs to.
         * `'dropout_p'`: An `Optional[float]`, the dropout probability for the new neuron. 
             Defaults to 0.
@@ -184,11 +184,11 @@ def add_neurons(
             out_neurons = jnp.array(out_neurons, dtype=int)
             adjacency_matrix = adjacency_matrix.at[id, out_neurons].set(1)
 
-        type = neuron_datum['type']
-        assert type in {'input', 'hidden', 'output'}
-        if type == 'input':
+        group = neuron_datum['group']
+        assert group in {'input', 'hidden', 'output'}
+        if group == 'input':
             input_neurons = jnp.append(input_neurons, id)
-        elif type == 'output':
+        elif group == 'output':
             output_neurons = jnp.append(output_neurons, id)
 
         _dropout_p = neuron_datum['dropout_p']
