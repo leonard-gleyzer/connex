@@ -10,6 +10,7 @@ def _get_group_and_activation(
     id: int
 ) -> Tuple[str, Optional[Callable]]:
     assert 0 <= id < network.num_neurons
+    
     if jnp.isin(id, network.input_neurons):
         group = 'input'
         activation = None
@@ -19,6 +20,7 @@ def _get_group_and_activation(
     else:
         group = 'hidden'
         activation = network.activation
+
     return group, activation
 
 
@@ -43,6 +45,7 @@ def to_networkx_graph(network: NeuralNetwork) -> DiGraph:
         dropout_p=network.get_dropout_p(),
         key=network.key
     )
+
     for id in range(network.num_neurons):
         neuron_bias = network.parameter_matrix[id, -1]
         group, activation = _get_group_and_activation(network, id)
@@ -54,6 +57,7 @@ def to_networkx_graph(network: NeuralNetwork) -> DiGraph:
             activation=activation,
             dropout_p=dropout_p[id]
         )
+        
     for (neuron, outputs) in network.adjacency_dict.items():
         for output in outputs:
             weight = network.parameter_matrix[output, neuron]
