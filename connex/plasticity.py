@@ -1,5 +1,7 @@
 from typing import Callable, Dict, Mapping, Optional, Sequence, Tuple, Union
 
+import equinox.experimental as eqxe
+
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
@@ -66,7 +68,7 @@ def add_connections(
         network.activation,
         network.output_activation,
         dropout_p,
-        key=network.key,
+        key=eqxe.get_state(network.key, jr.PRNGKey(0)),
         parameter_matrix=network.parameter_matrix
     )
 
@@ -129,7 +131,7 @@ def remove_connections(
         network.activation,
         network.output_activation,
         dropout_p,
-        key=network.key,
+        key=eqxe.get_state(network.key, jr.PRNGKey(0)),
         parameter_matrix=network.parameter_matrix
     )
 
@@ -218,7 +220,7 @@ def add_neurons(
         network.activation,
         network.output_activation,
         dropout_p,
-        key=network.key,
+        key=eqxe.get_state(network.key, jr.PRNGKey(0)),
         parameter_matrix=parameter_matrix
     )
 
@@ -287,7 +289,7 @@ def remove_neurons(network: NeuralNetwork, ids: Sequence[int],
         network.activation,
         network.output_activation,
         dropout_p,
-        key=network.key,
+        key=eqxe.get_state(network.key, jr.PRNGKey(0)),
         parameter_matrix=parameter_matrix
     )
 
