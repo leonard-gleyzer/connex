@@ -1,6 +1,5 @@
 from typing import Callable, Mapping, Optional, Sequence, Union
 
-import equinox as eqx
 import equinox.experimental as eqxe
 from equinox import Module, filter_jit, static_field
 
