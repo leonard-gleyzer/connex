@@ -9,8 +9,8 @@ import jax.numpy as jnp
 import jax.random as jr
 from jax import jit, vmap, lax
 
-from custom_types import Array
-from utils import _adjacency_dict_to_matrix, _identity
+from .custom_types import Array
+from .utils import _adjacency_dict_to_matrix, _identity
 
 
 class NeuralNetwork(Module):
@@ -85,6 +85,10 @@ class NeuralNetwork(Module):
         self.input_neurons = input_neurons
         self.output_neurons = output_neurons
         self.num_neurons = num_neurons
+
+        # Activations may themselves be `eqx.Module`s, so we do this to ensure
+        # that both `Module` and non-`Module` activations work with the same
+        # input shape.
         self.activation = activation \
             if isinstance(activation, Module) else vmap(activation)
         self.output_activation = output_activation \
@@ -103,9 +107,9 @@ class NeuralNetwork(Module):
         self.dropout_p = eqxe.StateIndex()
         self.set_dropout_p(dropout_p)
 
-        # Set parameters
+        # Set parameters.
         if parameter_matrix is None:
-            # Initialize parameters as being drawn iid ~ N(0, 0.01)
+            # Initialize parameters as being drawn iid ~ N(0, 0.01).
             parameter_matrix = jr.normal(
                 key, (self.num_neurons, self.num_neurons + 1)
             ) * 0.1
@@ -133,16 +137,16 @@ class NeuralNetwork(Module):
         The result array from the forward pass. The order of the array elements will be
         the order of the output neurons passed in during initialization.
         """
-        # Neuron value array, updated as neurons are fired
+        # Neuron value array, updated as neurons are fired.
         values = jnp.ones((self.num_neurons + 1,))
         
-        # Set input values
+        # Set input values.
         values = values.at[self.input_neurons].set(x)
 
-        # Zero out network weights where there are no connections
+        # Zero out network weights where there are no connections.
         parameters = self.parameter_matrix.at[:, :-1].multiply(self.adjacency_matrix.T)
 
-        # Dropout
+        # Dropout.
         key = eqxe.get_state(self.key, jr.PRNGKey(0))
 
         dropout_p = self.get_dropout_p()
@@ -152,21 +156,21 @@ class NeuralNetwork(Module):
         _, new_key = jr.split(key)
         eqxe.set_state(self.key, new_key)
 
-        # Forward pass in topological batch order
+        # Forward pass in topological batch order.
         for tb in self.topo_batches:
-            # Affine transformation, wx + b
+            # Affine transformation, wx + b.
             affine = vmap(jnp.dot, in_axes=[0, None])(parameters[tb], values)
 
-            # Add a dimension -- activations may themselves be `eqx.Module`s
+            # Add a dimension.
             affine = jnp.expand_dims(affine, 1)
 
-            # Apply activations/dropout
+            # Apply activations/dropout.
             output_values = vmap(self._fire_neuron)(tb, affine, values[tb], apply_dropout[tb])
 
-            # Set new values
+            # Set new values.
             values = values.at[tb].set(output_values)
 
-        # Return values pertaining to output neurons
+        # Return values pertaining to output neurons.
         return values[self.output_neurons]
 
 
@@ -218,26 +222,26 @@ class NeuralNetwork(Module):
         Check to make sure the input neurons, output neurons,
         and adjacency dict are valid.
         """
-        # Check that the input and output neurons are 1D and nonempty
+        # Check that the input and output neurons are 1D and nonempty.
         assert jnp.size(input_neurons.shape) == 1 and jnp.size(input_neurons) > 0
         assert jnp.size(output_neurons.shape) == 1 and jnp.size(output_neurons) > 0
 
-        # Check that the input and output neurons are disjoint
+        # Check that the input and output neurons are disjoint.
         assert jnp.size(jnp.intersect1d(input_neurons, output_neurons)) == 0
 
-        # Check that input neurons and neurons with no input are equivalent
+        # Check that input neurons and neurons with no input are equivalent.
         adjacency_matrix = _adjacency_dict_to_matrix(num_neurons, adjacency_dict)
         num_inputs_per_neuron = jnp.sum(adjacency_matrix, axis=0)
         neurons_with_no_input = jnp.argwhere(num_inputs_per_neuron == 0).flatten()
         assert jnp.size(jnp.setdiff1d(neurons_with_no_input, input_neurons)) == 0
 
-        # Check that output neurons and neurons with no output are equivalent
+        # Check that output neurons and neurons with no output are equivalent.
         num_outputs_per_neuron = jnp.sum(adjacency_matrix, axis=1)
         neurons_with_no_output = jnp.argwhere(num_outputs_per_neuron == 0).flatten()
         assert jnp.size(jnp.setdiff1d(neurons_with_no_output, output_neurons)) == 0
 
         # Check that neuron ids are in the range [0, num_neurons)
-        # and that ids are not repeated
+        # and that ids are not repeated.
         for input, outputs in adjacency_dict.items():
             assert 0 <= input < num_neurons
             if outputs:
@@ -269,7 +273,7 @@ class NeuralNetwork(Module):
                 queue = jnp.append(queue, topo_batch)
                 topo_batches.append(topo_batch)
 
-        # Check that the graph is acyclic
+        # Check that the graph is acyclic.
         row_sums = jnp.sum(adjacency_matrix, axis=1)
         col_sums = _col_sums(adjacency_matrix)
         bad_in_neurons = set(jnp.argwhere(col_sums).flatten().tolist())

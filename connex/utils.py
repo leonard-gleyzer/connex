@@ -7,7 +7,7 @@ import numpy as np
 import time
 
 
-# Documentation helpers
+# Documentation helpers.
 
 def _identity(x):
     return x
