@@ -500,14 +500,14 @@ this.</p>
 
 
 <h5 id="connex.NeuralNetwork.__init__" class="doc doc-heading">
-<code class="highlight language-python"><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">num_neurons</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">adjacency_dict</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span> <span class="n">input_neurons</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">output_neurons</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">activation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">silu</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">output_activation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">_identity</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">dropout_p</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PRNGKey</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">parameter_matrix</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Array</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+<code class="highlight language-python"><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">num_neurons</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">adjacency_dict</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span> <span class="n">input_neurons</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">output_neurons</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">activation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">silu</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">output_activation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">_identity</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">dropout_p</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PRNGKey</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">parameter_matrix</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Array</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
 
 
 <a href="#connex.NeuralNetwork.__init__" class="headerlink" title="Permanent link">¤</a></h5>
 
     <div class="doc doc-contents ">
 
-      <p><strong>Arguments:</strong></p>
+      <p><strong>Arguments</strong>:</p>
 <ul>
 <li><code>num_neurons</code>: The number of neurons in the network.</li>
 <li><code>adjacency_dict</code>: A dictionary that maps a neuron id to the ids of its
@@ -529,11 +529,11 @@ this.</p>
     the sequence must have length <code>num_neurons</code>, where <code>dropout_p[i]</code> is the
     dropout probability for neuron <code>i</code>. Note that this allows dropout to be 
     applied to input and output neurons as well.</li>
-<li><code>key</code>: The <code>PRNGKey</code> used to initialize parameters. Optional argument. Defaults
-    to <code>jax.random.PRNGKey(0)</code>.</li>
+<li><code>key</code>: The <code>jax.random.PRNGKey</code> used for parameter initialization and dropout. 
+    Optional, keyword-only argument. Defaults to <code>jax.random.PRNGKey(0)</code>.</li>
 <li><code>parameter_matrix</code>: A <code>jnp.array</code> of shape <code>(N, N + 1)</code> where entry <code>[i, j]</code> is 
     neuron <code>i</code>'s weight for neuron <code>j</code>, and entry <code>[i, N]</code> is neuron <code>i</code>'s bias. 
-    Optional argument -- used primarily for plasticity functionality.</li>
+    Optional, keyword-only argument -- used primarily for plasticity functionality.</li>
 </ul>
 
     </div>
@@ -563,8 +563,8 @@ vectorization used within each topological batch.</p>
     values will be written to the input neurons in the order passed in during
     initialization.</li>
 </ul>
-<p><strong>Returns</strong>:
-The result array from the forward pass. The order of the array elements will be
+<p><strong>Returns</strong>:</p>
+<p>The result array from the forward pass. The order of the array elements will be
 the order of the output neurons passed in during initialization.</p>
 
     </div>
