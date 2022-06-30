@@ -3,14 +3,15 @@ from typing import Callable, Mapping, Optional, Sequence, Union
 import equinox.experimental as eqxe
 from equinox import Module, filter_jit, static_field
 
-
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
-from jax import jit, vmap, lax
+from jax import vmap, lax
+
+import numpy as np
 
 from .custom_types import Array
-from .utils import keygen, _adjacency_dict_to_matrix, _identity
+from .utils import _adjacency_dict_to_matrix, _identity
 
 
 class NeuralNetwork(Module):
@@ -29,8 +30,8 @@ class NeuralNetwork(Module):
     input_neurons: jnp.array = static_field()
     output_neurons: jnp.array = static_field()
     num_neurons: int = static_field()
-    dropout_p: Union[jnp.array, eqxe.StateIndex] = static_field()
-    key: jr.PRNGKey = static_field()
+    dropout_p: eqxe.StateIndex = static_field()
+    key: eqxe.StateIndex = static_field()
 
     def __init__(
         self,
@@ -41,11 +42,12 @@ class NeuralNetwork(Module):
         activation: Callable = jnn.silu,
         output_activation: Callable = _identity,
         dropout_p: Union[float, Sequence[float]] = 0.,
+        *,
         key: Optional[jr.PRNGKey] = None,
         parameter_matrix: Optional[Array] = None,
         **kwargs,
     ):
-        """**Arguments:**
+        """**Arguments**:
 
         - `num_neurons`: The number of neurons in the network.
         - `adjacency_dict`: A dictionary that maps a neuron id to the ids of its
@@ -67,11 +69,11 @@ class NeuralNetwork(Module):
             the sequence must have length `num_neurons`, where `dropout_p[i]` is the
             dropout probability for neuron `i`. Note that this allows dropout to be 
             applied to input and output neurons as well.
-        - `key`: The `PRNGKey` used to initialize parameters. Optional argument. Defaults
-            to `jax.random.PRNGKey(0)`.
+        - `key`: The `jax.random.PRNGKey` used for parameter initialization and dropout. 
+            Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
         - `parameter_matrix`: A `jnp.array` of shape `(N, N + 1)` where entry `[i, j]` is 
             neuron `i`'s weight for neuron `j`, and entry `[i, N]` is neuron `i`'s bias. 
-            Optional argument -- used primarily for plasticity functionality.
+            Optional, keyword-only argument -- used primarily for plasticity functionality.
         """
         super().__init__(**kwargs)
         input_neurons = jnp.array(input_neurons, dtype=int)
@@ -84,18 +86,31 @@ class NeuralNetwork(Module):
         self.input_neurons = input_neurons
         self.output_neurons = output_neurons
         self.num_neurons = num_neurons
-        self.activation = activation
-        self.output_activation = output_activation
-        self.key = key if key is not None else jr.PRNGKey(0)
+
+        # Activations may themselves be `eqx.Module`s, so we do this to ensure
+        # that both `Module` and non-`Module` activations work with the same
+        # input shape.
+        self.activation = activation \
+            if isinstance(activation, Module) else vmap(activation)
+        self.output_activation = output_activation \
+            if isinstance(output_activation, Module) else vmap(output_activation)
+
+        # Set the random key. We use eqxe.StateIndex here so that the key 
+        # can be updated after every forward pass. This ensures that the
+        # random values generated for determining dropout application
+        # are different for each forward pass.
+        self.key = eqxe.StateIndex()
+        key = key if key is not None else jr.PRNGKey(0)
+        eqxe.set_state(self.key, key)
 
         # Set dropout probabilities. We use eqxe.StateIndex here so that
         # dropout probabilities can later be modified, if desired.
         self.dropout_p = eqxe.StateIndex()
         self.set_dropout_p(dropout_p)
 
-        # Set parameters
+        # Set parameters.
         if parameter_matrix is None:
-            # Initialize parameters as being drawn iid ~ N(0, 0.01)
+            # Initialize parameters as being drawn iid ~ N(0, 0.01).
             parameter_matrix = jr.normal(
                 key, (self.num_neurons, self.num_neurons + 1)
             ) * 0.1
@@ -119,50 +134,55 @@ class NeuralNetwork(Module):
             initialization.
 
         **Returns**:
+
         The result array from the forward pass. The order of the array elements will be
         the order of the output neurons passed in during initialization.
         """
-        # Set input values
-        values = jnp.zeros((self.num_neurons,)).at[self.input_neurons].set(x)
+        # Neuron value array, updated as neurons are fired.
+        values = jnp.ones((self.num_neurons + 1,))
+        
+        # Set input values.
+        values = values.at[self.input_neurons].set(x)
 
-        # Function to parallelize neurons within a topological batch
-        fire_neurons = vmap(self._fire_neuron, in_axes=[0, None, 0])
+        # Zero out network weights where there are no connections.
+        parameters = self.parameter_matrix.at[:, :-1].multiply(self.adjacency_matrix.T)
 
-        # Forward pass in topological batch order
+        # Dropout.
+        key = eqxe.get_state(self.key, jr.PRNGKey(0))
+
+        dropout_p = self.get_dropout_p()
+        rand = jr.uniform(key, dropout_p.shape, minval=0, maxval=1)
+        apply_dropout = jnp.less_equal(rand, dropout_p)
+
+        _, new_key = jr.split(key)
+        eqxe.set_state(self.key, new_key)
+
+        # Forward pass in topological batch order.
         for tb in self.topo_batches:
-            keys = keygen(n_keys=jnp.size(tb))
-            output_values = fire_neurons(tb, values, keys)
+            # Affine transformation, wx + b.
+            affine = vmap(jnp.dot, in_axes=[0, None])(parameters[tb], values)
+
+            # Add a dimension.
+            affine = jnp.expand_dims(affine, 1)
+
+            # Apply activations/dropout.
+            output_values = vmap(self._fire_neuron)(tb, affine, values[tb], apply_dropout[tb])
+
+            # Set new values.
             values = values.at[tb].set(output_values)
 
-        # Return values pertaining to output neurons
+        # Return values pertaining to output neurons.
         return values[self.output_neurons]
 
 
     def _fire_neuron(
         self, 
         id: int, 
-        neuron_values: jnp.array, 
-        key: jr.PRNGKey,
+        affine: jnp.array,
+        neuron_value: float, 
+        apply_dropout: bool,
     ) -> float:
         """Compute the output of neuron `id`."""
-        def _affine_transformation() -> jnp.array:
-            # Get parameters
-            parameters = self.parameter_matrix[id]
-
-            # Use the respective column of the adjacency matrix as a binary mask
-            # so vmap can work with neurons with different numbers of inputs
-            inputs = neuron_values * self.adjacency_matrix[:, id]
-
-            # Apply weights and bias
-            affine_transformation = jnp.dot(parameters, jnp.append(inputs, 1))
-
-            # Add a dimension in case the activation functions are themselves
-            # neural networks (i.e. equinox Modules)
-            return jnp.expand_dims(affine_transformation, 0)
-
-        rand = jr.uniform(key, minval=0, maxval=1)
-        dropout_p = self.get_dropout_p()
-        use_dropout = jnp.less_equal(rand, dropout_p[id])
 
         def exec_if_dropout() -> float:
             return 0.
@@ -170,25 +190,23 @@ class NeuralNetwork(Module):
         def exec_if_not_dropout() -> float:
 
             def exec_if_input_neuron() -> float:
-                return neuron_values[id]
+                return neuron_value
 
             def exec_if_not_input_neuron() -> float:
-                affine_transformation = _affine_transformation()
-                output = lax.cond(
+                return jnp.squeeze(lax.cond(
                     jnp.isin(id, self.output_neurons),
-                    lambda: self.output_activation(affine_transformation),
-                    lambda: self.activation(affine_transformation)
-                )
-                return jnp.squeeze(output)
+                    lambda: self.output_activation(affine),
+                    lambda: self.activation(affine)
+                ))
 
             return lax.cond(
                 jnp.isin(id, self.input_neurons),
                 exec_if_input_neuron,
                 exec_if_not_input_neuron
             )
-        
+
         return lax.cond(
-            use_dropout,
+            apply_dropout,
             exec_if_dropout,
             exec_if_not_dropout
         )
@@ -205,15 +223,26 @@ class NeuralNetwork(Module):
         Check to make sure the input neurons, output neurons,
         and adjacency dict are valid.
         """
-        # Check that the input and output neurons are 1D and nonempty
-        assert len(input_neurons.shape) == 1 and len(input_neurons) > 0
-        assert len(output_neurons.shape) == 1 and len(output_neurons) > 0
+        # Check that the input and output neurons are 1D and nonempty.
+        assert jnp.size(input_neurons.shape) == 1 and jnp.size(input_neurons) > 0
+        assert jnp.size(output_neurons.shape) == 1 and jnp.size(output_neurons) > 0
 
-        # Check that the input and output neurons are disjoint
-        assert len(jnp.intersect1d(input_neurons, output_neurons)) == 0
+        # Check that the input and output neurons are disjoint.
+        assert jnp.size(jnp.intersect1d(input_neurons, output_neurons)) == 0
+
+        # Check that input neurons and neurons with no input are equivalent.
+        adjacency_matrix = _adjacency_dict_to_matrix(num_neurons, adjacency_dict)
+        num_inputs_per_neuron = jnp.sum(adjacency_matrix, axis=0)
+        neurons_with_no_input = jnp.argwhere(num_inputs_per_neuron == 0).flatten()
+        assert jnp.size(jnp.setdiff1d(neurons_with_no_input, input_neurons)) == 0
+
+        # Check that output neurons and neurons with no output are equivalent.
+        num_outputs_per_neuron = jnp.sum(adjacency_matrix, axis=1)
+        neurons_with_no_output = jnp.argwhere(num_outputs_per_neuron == 0).flatten()
+        assert jnp.size(jnp.setdiff1d(neurons_with_no_output, output_neurons)) == 0
 
         # Check that neuron ids are in the range [0, num_neurons)
-        # and that ids are not repeated
+        # and that ids are not repeated.
         for input, outputs in adjacency_dict.items():
             assert 0 <= input < num_neurons
             if outputs:
@@ -230,31 +259,30 @@ class NeuralNetwork(Module):
         Topologically sort/batch neurons and also check that 
         the network is acyclic.
         """
-        _col_sums = jit(lambda x: jnp.sum(x, axis=0))
-        queue = input_neurons
-        adjacency_matrix = adjacency_matrix
-        topo_batches = [input_neurons]
+        queue = np.array(input_neurons)
+        topo_batches = [np.array(input_neurons)]
+        adjacency_matrix = np.array(adjacency_matrix)
 
-        while jnp.size(queue) > 0:
+        while np.size(queue) > 0:
             neuron, queue = queue[0], queue[1:]
-            outputs = jnp.argwhere(adjacency_matrix[neuron]).flatten()
-            adjacency_matrix = adjacency_matrix.at[neuron, outputs].set(0)
-            sums = _col_sums(adjacency_matrix[:, outputs])
-            idx = jnp.argwhere(sums == 0).flatten()
+            outputs = np.argwhere(adjacency_matrix[neuron]).flatten()
+            adjacency_matrix[neuron, outputs] = 0
+            sums = np.sum(adjacency_matrix[:, outputs], axis=0)
+            idx = np.argwhere(sums == 0).flatten()
             topo_batch = outputs[idx]
-            if jnp.size(topo_batch) > 0:
-                queue = jnp.append(queue, topo_batch)
+            if np.size(topo_batch) > 0:
+                queue = np.append(queue, topo_batch)
                 topo_batches.append(topo_batch)
 
-        # Check that the graph is acyclic
-        row_sums = jnp.sum(adjacency_matrix, axis=1)
-        col_sums = _col_sums(adjacency_matrix)
-        bad_in_neurons = set(jnp.argwhere(col_sums).flatten().tolist())
-        bad_out_neurons = set(jnp.argwhere(row_sums).flatten().tolist())
+        # Check that the graph is acyclic.
+        row_sums = np.sum(adjacency_matrix, axis=1)
+        col_sums = np.sum(adjacency_matrix, axis=0)
+        bad_in_neurons = set(np.argwhere(col_sums).flatten().tolist())
+        bad_out_neurons = set(np.argwhere(row_sums).flatten().tolist())
         union = bad_in_neurons | bad_out_neurons
         assert len(union) == 0, f'Cycle(s) found involving neurons {union}'
 
-        return topo_batches
+        return [jnp.array(tb) for tb in topo_batches]
 
 
     def get_dropout_p(self) -> Array:

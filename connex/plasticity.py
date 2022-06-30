@@ -1,5 +1,7 @@
 from typing import Callable, Dict, Mapping, Optional, Sequence, Tuple, Union
 
+import equinox.experimental as eqxe
+
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
@@ -66,8 +68,8 @@ def add_connections(
         network.activation,
         network.output_activation,
         dropout_p,
-        network.key,
-        network.parameter_matrix
+        key=eqxe.get_state(network.key, jr.PRNGKey(0)),
+        parameter_matrix=network.parameter_matrix
     )
 
 
@@ -129,8 +131,8 @@ def remove_connections(
         network.activation,
         network.output_activation,
         dropout_p,
-        network.key,
-        network.parameter_matrix
+        key=eqxe.get_state(network.key, jr.PRNGKey(0)),
+        parameter_matrix=network.parameter_matrix
     )
 
 
@@ -198,8 +200,9 @@ def add_neurons(
         
         id += 1
 
+    key = eqxe.get_state(network.key, jr.PRNGKey(0))
     parameter_matrix = jr.normal(
-        network.key, (total_num_neurons, total_num_neurons + 1)
+        key, (total_num_neurons, total_num_neurons + 1)
     ) * 0.1
     parameter_matrix = parameter_matrix \
         .at[:network.num_neurons, :network.num_neurons] \
@@ -218,8 +221,8 @@ def add_neurons(
         network.activation,
         network.output_activation,
         dropout_p,
-        network.key,
-        parameter_matrix
+        key=key,
+        parameter_matrix=parameter_matrix
     )
 
     new_neuron_ids = jnp.arange(num_new_neurons) + network.num_neurons
@@ -256,23 +259,23 @@ def remove_neurons(network: NeuralNetwork, ids: Sequence[int],
         else:
             id_map[id] = id - sub
 
-    # Adjust input and output neurons
+    # Adjust input and output neurons.
     input_neurons = jnp.setdiff1d(network.input_neurons, ids)
     output_neurons = jnp.setdiff1d(network.output_neurons, ids)
     input_neurons = [id_map[n] for n in input_neurons.tolist()]
     output_neurons = [id_map[n] for n in output_neurons.tolist()]
     
-    # Adjust adjacency matrix    
+    # Adjust adjacency matrix.
     adjacency_matrix = network.adjacency_matrix
     adjacency_matrix = jnp.delete(adjacency_matrix, ids, 0)
     adjacency_matrix = jnp.delete(adjacency_matrix, ids, 1)
 
-    # Adjust dropout
+    # Adjust dropout.
     keep_original_idx = jnp.array(list(sorted(id_map.keys())), dtype=int)
     dropout_p = network.get_dropout_p()
-    dropout_p = dropout_p[keep_original_idx] # .tolist() ?
+    dropout_p = dropout_p[keep_original_idx]
 
-    # Adjust parameter matrix
+    # Adjust parameter matrix.
     parameter_matrix = network.parameter_matrix
     parameter_matrix = jnp.delete(parameter_matrix, ids, 0)
     parameter_matrix = jnp.delete(parameter_matrix, ids, 1)
@@ -287,8 +290,8 @@ def remove_neurons(network: NeuralNetwork, ids: Sequence[int],
         network.activation,
         network.output_activation,
         dropout_p,
-        network.key,
-        parameter_matrix
+        key=eqxe.get_state(network.key, jr.PRNGKey(0)),
+        parameter_matrix=parameter_matrix
     )
 
     return network, id_map
@@ -304,8 +307,9 @@ def connect_networks(
     activation: Callable = jnn.silu,
     output_activation: Callable = _identity,
     dropout_p: Optional[Union[float, Sequence[float]]] = None,
-    key: Optional[jr.PRNGKey] = None,
     keep_parameters: bool = True,
+    *,
+    key: Optional[jr.PRNGKey] = None,
 ) -> Tuple[NeuralNetwork, Dict[int, int]]:
     """Connect two networks together in a specified manner.
     
@@ -343,10 +347,10 @@ def connect_networks(
         applied to input and output neurons as well. Optional argument. If `None`, 
         defaults to the concatenation of `network1.get_dropout_p()` and 
         `network2.get_dropout_p()`.
-    - `key`: The `PRNGKey` used to initialize parameters. Optional argument. Defaults
-        to `jax.random.PRNGKey(0)`.
     - `keep_parameters`: If `True`, copies the parameters of `network1` and `network2`
         to the appropriate parameter entries of the new network.
+    - `key`: The `PRNGKey` used to initialize parameters. Optional, keyword-only argument. 
+        Defaults to `jax.random.PRNGKey(0)`.
 
     **Returns**:
 
@@ -357,7 +361,7 @@ def connect_networks(
     # Set key. Done this way for nicer docs.
     key = key if key is not None else jr.PRNGKey(0)
 
-    # Set input and output neurons
+    # Set input and output neurons.
     if input_neurons is None:
         input_neurons = [network1.input_neurons, network2.input_neurons]
     input_neurons = jnp.append(
@@ -372,7 +376,7 @@ def connect_networks(
         jnp.array(output_neurons[1]) + network1.num_neurons
     )
 
-    # Set adjacency matrix
+    # Set adjacency matrix.
     num_neurons = network1.num_neurons + network2.num_neurons
     adjacency_matrix = jnp.zeros((num_neurons, num_neurons))
     adjacency_matrix = adjacency_matrix \
@@ -390,20 +394,20 @@ def connect_networks(
         _from_neuron = from_neuron + network1.num_neurons
         adjacency_matrix = adjacency_matrix.at[_from_neuron, to_neurons].set(1)
 
-    # Set dropout probabilities
+    # Set dropout probabilities.
     if dropout_p is None:
         dropout_p = jnp.append(
             network1.get_dropout_p(), 
             network2.get_dropout_p()
         )
 
-    # Initialize parameters iid ~ N(0, 0.01)
+    # Initialize parameters iid ~ N(0, 0.01).
     parameter_matrix = jr.normal(
         key, (num_neurons, num_neurons + 1)
     ) * 0.1
 
     if keep_parameters:
-        # Copy parameters from input networks to corresponding neurons in new network
+        # Copy parameters from input networks to corresponding neurons in new network.
         parameter_matrix = parameter_matrix \
             .at[:network1.num_neurons, :network1.num_neurons] \
             .set(network1.parameter_matrix[:, :-1])
@@ -428,8 +432,8 @@ def connect_networks(
         activation,
         output_activation,
         dropout_p,
-        key,
-        parameter_matrix
+        key=key,
+        parameter_matrix=parameter_matrix
     )
 
     neuron_ids = jnp.arange(network2.num_neurons) + network1.num_neurons

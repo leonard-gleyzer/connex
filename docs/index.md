@@ -16,11 +16,11 @@ Requires Python 3.7+, JAX 0.3.4+, and Equinox 0.5.2+.
 
 ## Usage
 
-Suppose we would like to create a trainable neural network from the following DAG 
+As a small example, let's create a trainable neural network from the following DAG
 
 ![dag](https://www.mdpi.com/algorithms/algorithms-13-00256/article_deploy/html/images/algorithms-13-00256-g001.png)
 
-with input neuron 0 and output neurons 3 and 11 (in that order), with a `jax.nn.relu` activation function for the hidden neurons:
+with input neuron 0 and output neurons 3 and 11 (in that order), with a ReLU activation function for the hidden neurons:
 
 ```python
 import connex as cnx
