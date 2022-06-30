@@ -6,10 +6,12 @@ from equinox import Module, filter_jit, static_field
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
-from jax import jit, vmap, lax
+from jax import vmap, lax
 
-from .custom_types import Array
-from .utils import _adjacency_dict_to_matrix, _identity
+import numpy as np
+
+from custom_types import Array
+from utils import _adjacency_dict_to_matrix, _identity
 
 
 class NeuralNetwork(Module):
@@ -257,26 +259,26 @@ class NeuralNetwork(Module):
         Topologically sort/batch neurons and also check that 
         the network is acyclic.
         """
-        _col_sums = jit(lambda x: jnp.sum(x, axis=0))
-        queue = input_neurons
-        topo_batches = [input_neurons]
+        queue = np.array(input_neurons)
+        topo_batches = [np.array(input_neurons)]
+        adjacency_matrix = np.array(adjacency_matrix)
 
-        while jnp.size(queue) > 0:
+        while np.size(queue) > 0:
             neuron, queue = queue[0], queue[1:]
-            outputs = jnp.argwhere(adjacency_matrix[neuron]).flatten()
-            adjacency_matrix = adjacency_matrix.at[neuron, outputs].set(0)
-            sums = _col_sums(adjacency_matrix[:, outputs])
-            idx = jnp.argwhere(sums == 0).flatten()
+            outputs = np.argwhere(adjacency_matrix[neuron]).flatten()
+            adjacency_matrix[neuron, outputs] = 0
+            sums = np.sum(adjacency_matrix[:, outputs], axis=0)
+            idx = np.argwhere(sums == 0).flatten()
             topo_batch = outputs[idx]
-            if jnp.size(topo_batch) > 0:
-                queue = jnp.append(queue, topo_batch)
-                topo_batches.append(topo_batch)
+            if np.size(topo_batch) > 0:
+                queue = np.append(queue, topo_batch)
+                topo_batches.append(jnp.array(topo_batch))
 
         # Check that the graph is acyclic.
-        row_sums = jnp.sum(adjacency_matrix, axis=1)
-        col_sums = _col_sums(adjacency_matrix)
-        bad_in_neurons = set(jnp.argwhere(col_sums).flatten().tolist())
-        bad_out_neurons = set(jnp.argwhere(row_sums).flatten().tolist())
+        row_sums = np.sum(adjacency_matrix, axis=1)
+        col_sums = np.sum(adjacency_matrix, axis=0)
+        bad_in_neurons = set(np.argwhere(col_sums).flatten().tolist())
+        bad_out_neurons = set(np.argwhere(row_sums).flatten().tolist())
         union = bad_in_neurons | bad_out_neurons
         assert len(union) == 0, f'Cycle(s) found involving neurons {union}'
 
