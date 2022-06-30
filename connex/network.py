@@ -8,8 +8,8 @@ import jax.numpy as jnp
 import jax.random as jr
 from jax import jit, vmap, lax
 
-from custom_types import Array
-from utils import _adjacency_dict_to_matrix, _identity
+from .custom_types import Array
+from .utils import _adjacency_dict_to_matrix, _identity
 
 
 class NeuralNetwork(Module):
