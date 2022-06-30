@@ -10,4 +10,4 @@ from .plasticity import (
 from . import nn
 
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
