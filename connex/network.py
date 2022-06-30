@@ -1,5 +1,6 @@
 from typing import Callable, Mapping, Optional, Sequence, Union
 
+import equinox as eqx
 import equinox.experimental as eqxe
 from equinox import Module, filter_jit, static_field
 
@@ -8,8 +9,8 @@ import jax.numpy as jnp
 import jax.random as jr
 from jax import jit, vmap, lax
 
-from .custom_types import Array
-from .utils import _adjacency_dict_to_matrix, _identity
+from custom_types import Array
+from utils import _adjacency_dict_to_matrix, _identity
 
 
 class NeuralNetwork(Module):
@@ -84,15 +85,17 @@ class NeuralNetwork(Module):
         self.input_neurons = input_neurons
         self.output_neurons = output_neurons
         self.num_neurons = num_neurons
-        self.activation = activation
-        self.output_activation = output_activation
+        self.activation = activation \
+            if isinstance(activation, Module) else vmap(activation)
+        self.output_activation = output_activation \
+            if isinstance(output_activation, Module) else vmap(output_activation)
 
         # Set the random key. We use eqxe.StateIndex here so that the key 
         # can be updated after every forward pass. This ensures that the
-        # random numbers generated for determining dropout application
+        # random values generated for determining dropout application
         # are different for each forward pass.
-        key = key if key is not None else jr.PRNGKey(0)
         self.key = eqxe.StateIndex()
+        key = key if key is not None else jr.PRNGKey(0)
         eqxe.set_state(self.key, key)
 
         # Set dropout probabilities. We use eqxe.StateIndex here so that
@@ -154,9 +157,11 @@ class NeuralNetwork(Module):
             # Affine transformation, wx + b
             affine = vmap(jnp.dot, in_axes=[0, None])(parameters[tb], values)
 
+            # Add a dimension -- activations may themselves be `eqx.Module`s
+            affine = jnp.expand_dims(affine, 1)
+
             # Apply activations/dropout
-            output_values = vmap(self._fire_neuron) \
-                (tb, affine, values[tb], apply_dropout[tb])
+            output_values = vmap(self._fire_neuron)(tb, affine, values[tb], apply_dropout[tb])
 
             # Set new values
             values = values.at[tb].set(output_values)
@@ -168,7 +173,7 @@ class NeuralNetwork(Module):
     def _fire_neuron(
         self, 
         id: int, 
-        affine_transformation: jnp.array,
+        affine: jnp.array,
         neuron_value: float, 
         apply_dropout: bool,
     ) -> float:
@@ -183,16 +188,11 @@ class NeuralNetwork(Module):
                 return neuron_value
 
             def exec_if_not_input_neuron() -> float:
-                _apply_activation = lambda activation: lax.cond(
-                    isinstance(activation, Module),
-                    lambda: jnp.squeeze(activation(jnp.expand_dims(affine_transformation, 0))),
-                    lambda: activation(affine_transformation)
-                )
-                return lax.cond(
+                return jnp.squeeze(lax.cond(
                     jnp.isin(id, self.output_neurons),
-                    lambda: _apply_activation(self.output_activation),
-                    lambda: _apply_activation(self.activation)
-                )
+                    lambda: self.output_activation(affine),
+                    lambda: self.activation(affine)
+                ))
 
             return lax.cond(
                 jnp.isin(id, self.input_neurons),
