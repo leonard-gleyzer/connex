@@ -272,7 +272,7 @@ class NeuralNetwork(Module):
             topo_batch = outputs[idx]
             if np.size(topo_batch) > 0:
                 queue = np.append(queue, topo_batch)
-                topo_batches.append(jnp.array(topo_batch))
+                topo_batches.append(topo_batch)
 
         # Check that the graph is acyclic.
         row_sums = np.sum(adjacency_matrix, axis=1)
@@ -282,7 +282,7 @@ class NeuralNetwork(Module):
         union = bad_in_neurons | bad_out_neurons
         assert len(union) == 0, f'Cycle(s) found involving neurons {union}'
 
-        return topo_batches
+        return [jnp.array(tb) for tb in topo_batches]
 
 
     def get_dropout_p(self) -> Array:
