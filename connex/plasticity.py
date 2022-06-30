@@ -200,8 +200,9 @@ def add_neurons(
         
         id += 1
 
+    key = eqxe.get_state(network.key, jr.PRNGKey(0))
     parameter_matrix = jr.normal(
-        network.key, (total_num_neurons, total_num_neurons + 1)
+        key, (total_num_neurons, total_num_neurons + 1)
     ) * 0.1
     parameter_matrix = parameter_matrix \
         .at[:network.num_neurons, :network.num_neurons] \
@@ -220,7 +221,7 @@ def add_neurons(
         network.activation,
         network.output_activation,
         dropout_p,
-        key=eqxe.get_state(network.key, jr.PRNGKey(0)),
+        key=key,
         parameter_matrix=parameter_matrix
     )
 
