@@ -20,6 +20,7 @@ class MLP(NeuralNetwork):
         depth: int,
         activation: Callable = jnn.silu,
         output_activation: Callable = _identity,
+        *,
         key: Optional[jr.PRNGKey] = None,
         **kwargs,
     ):
@@ -34,8 +35,8 @@ class MLP(NeuralNetwork):
             trainable equinox Module.
         - `output_activation`: The activation function applied element-wise to 
             the  output neurons. It can itself be a trainable equinox Module.
-        - `key`: The `PRNGKey` used to initialize parameters. Optional argument. 
-            Defaults to `jax.random.PRNGKey(0)`.
+        - `key`: The `PRNGKey` used to initialize parameters. Optional, keyword-only 
+            argument. Defaults to `jax.random.PRNGKey(0)`.
         """
         key = key if key is not None else jr.PRNGKey(0)
         num_neurons = width * depth + input_size + output_size

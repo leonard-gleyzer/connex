@@ -66,8 +66,8 @@ def add_connections(
         network.activation,
         network.output_activation,
         dropout_p,
-        network.key,
-        network.parameter_matrix
+        key=network.key,
+        parameter_matrix=network.parameter_matrix
     )
 
 
@@ -129,8 +129,8 @@ def remove_connections(
         network.activation,
         network.output_activation,
         dropout_p,
-        network.key,
-        network.parameter_matrix
+        key=network.key,
+        parameter_matrix=network.parameter_matrix
     )
 
 
@@ -218,8 +218,8 @@ def add_neurons(
         network.activation,
         network.output_activation,
         dropout_p,
-        network.key,
-        parameter_matrix
+        key=network.key,
+        parameter_matrix=parameter_matrix
     )
 
     new_neuron_ids = jnp.arange(num_new_neurons) + network.num_neurons
@@ -287,8 +287,8 @@ def remove_neurons(network: NeuralNetwork, ids: Sequence[int],
         network.activation,
         network.output_activation,
         dropout_p,
-        network.key,
-        parameter_matrix
+        key=network.key,
+        parameter_matrix=parameter_matrix
     )
 
     return network, id_map
@@ -304,8 +304,9 @@ def connect_networks(
     activation: Callable = jnn.silu,
     output_activation: Callable = _identity,
     dropout_p: Optional[Union[float, Sequence[float]]] = None,
-    key: Optional[jr.PRNGKey] = None,
     keep_parameters: bool = True,
+    *,
+    key: Optional[jr.PRNGKey] = None,
 ) -> Tuple[NeuralNetwork, Dict[int, int]]:
     """Connect two networks together in a specified manner.
     
@@ -343,10 +344,10 @@ def connect_networks(
         applied to input and output neurons as well. Optional argument. If `None`, 
         defaults to the concatenation of `network1.get_dropout_p()` and 
         `network2.get_dropout_p()`.
-    - `key`: The `PRNGKey` used to initialize parameters. Optional argument. Defaults
-        to `jax.random.PRNGKey(0)`.
     - `keep_parameters`: If `True`, copies the parameters of `network1` and `network2`
         to the appropriate parameter entries of the new network.
+    - `key`: The `PRNGKey` used to initialize parameters. Optional, keyword-only argument. 
+        Defaults to `jax.random.PRNGKey(0)`.
 
     **Returns**:
 
@@ -428,8 +429,8 @@ def connect_networks(
         activation,
         output_activation,
         dropout_p,
-        key,
-        parameter_matrix
+        key=key,
+        parameter_matrix=parameter_matrix
     )
 
     neuron_ids = jnp.arange(network2.num_neurons) + network1.num_neurons
