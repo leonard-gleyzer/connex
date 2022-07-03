@@ -6,10 +6,7 @@ from .plasticity import (
     remove_neurons,
     connect_networks
 )
-from .networkx_io import (
-    to_networkx_graph, 
-    from_networkx_graph
-)
+
 from . import nn
 
 
