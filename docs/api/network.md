@@ -9,3 +9,4 @@ The main class/object of the `connex` library.
             - __call__
             - get_dropout_p
             - set_dropout_p
+            - to_networkx_graph

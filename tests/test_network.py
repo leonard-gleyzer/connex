@@ -4,6 +4,7 @@ from jax import vmap
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
+import networkx as nx
 import optax
 
 import pytest
@@ -122,3 +123,29 @@ def test_dropout():
     zeros = jnp.zeros((mlp.num_neurons,))
     mlp.set_dropout_p(zeros)
     assert jnp.array_equal(mlp.get_dropout_p(), zeros)
+
+
+def test_networkx():
+    mlp = cnx.nn.MLP(1, 1, 2, 1)
+    mlp = eqx.tree_at(
+        lambda tree: tree.parameter_matrix, 
+        mlp, 
+        jnp.zeros(mlp.parameter_matrix.shape, dtype=float)
+    )
+    mlp_digraph = mlp.to_networkx_graph()
+    nodes = list(mlp_digraph.nodes.data())
+    true_nodes = [
+        (0, {'bias': None, 'group': 'input'}),
+        (1, {'bias': mlp.parameter_matrix[1, -1], 'group': 'hidden'}),
+        (2, {'bias': mlp.parameter_matrix[2, -1], 'group': 'hidden'}),
+        (3, {'bias': mlp.parameter_matrix[3, -1], 'group': 'output'}),
+    ]
+    assert eqx.tree_equal(nodes, true_nodes)
+    edges = list(mlp_digraph.edges.data())
+    true_edges = [
+        (0, 1, {'weight': mlp.parameter_matrix[1, 0]}),
+        (0, 2, {'weight': mlp.parameter_matrix[2, 0]}),
+        (1, 3, {'weight': mlp.parameter_matrix[3, 1]}),
+        (2, 3, {'weight': mlp.parameter_matrix[3, 2]}),
+    ]
+    eqx.tree_equal(edges, true_edges)
