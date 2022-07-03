@@ -1,5 +1,6 @@
 from typing import Callable, Dict, Mapping, Optional, Sequence, Tuple, Union
 
+import equinox as eqx
 import equinox.experimental as eqxe
 
 import jax.nn as jnn
@@ -58,15 +59,23 @@ def add_connections(
         output_neurons = network.output_neurons
     if dropout_p is None:
         dropout_p = network.get_dropout_p()
+
     adjacency_dict = _adjacency_matrix_to_dict(adjacency_matrix)
+    hidden_activation = network.hidden_activation \
+        if isinstance(network.hidden_activation, eqx.Module) \
+        else network.hidden_activation_
+    output_activation_elem = network.output_activation_elem \
+        if isinstance(network.output_activation_elem, eqx.Module) \
+        else network.output_activation_elem_
 
     return NeuralNetwork(
         network.num_neurons,
         adjacency_dict,
         input_neurons,
         output_neurons,
-        network.activation,
-        network.output_activation,
+        hidden_activation,
+        output_activation_elem,
+        network.output_activation_group,
         dropout_p,
         key=eqxe.get_state(network.key, jr.PRNGKey(0)),
         parameter_matrix=network.parameter_matrix
@@ -121,15 +130,23 @@ def remove_connections(
         output_neurons = network.output_neurons
     if dropout_p is None:
         dropout_p = network.get_dropout_p()
+
     adjacency_dict = _adjacency_matrix_to_dict(adjacency_matrix)
+    hidden_activation = network.hidden_activation \
+        if isinstance(network.hidden_activation, eqx.Module) \
+        else network.hidden_activation_
+    output_activation_elem = network.output_activation_elem \
+        if isinstance(network.output_activation_elem, eqx.Module) \
+        else network.output_activation_elem_
 
     return NeuralNetwork(
         network.num_neurons,
         adjacency_dict,
         input_neurons,
         output_neurons,
-        network.activation,
-        network.output_activation,
+        hidden_activation,
+        output_activation_elem,
+        network.output_activation_group,
         dropout_p,
         key=eqxe.get_state(network.key, jr.PRNGKey(0)),
         parameter_matrix=network.parameter_matrix
@@ -212,14 +229,21 @@ def add_neurons(
         .set(network.parameter_matrix[:, -1])
 
     adjacency_dict = _adjacency_matrix_to_dict(adjacency_matrix)
+    hidden_activation = network.hidden_activation \
+        if isinstance(network.hidden_activation, eqx.Module) \
+        else network.hidden_activation_
+    output_activation_elem = network.output_activation_elem \
+        if isinstance(network.output_activation_elem, eqx.Module) \
+        else network.output_activation_elem_
 
     _network = NeuralNetwork(
         total_num_neurons,
         adjacency_dict,
         input_neurons,
         output_neurons,
-        network.activation,
-        network.output_activation,
+        hidden_activation,
+        output_activation_elem,
+        network.output_activation_group,
         dropout_p,
         key=key,
         parameter_matrix=parameter_matrix
@@ -281,14 +305,21 @@ def remove_neurons(network: NeuralNetwork, ids: Sequence[int],
     parameter_matrix = jnp.delete(parameter_matrix, ids, 1)
 
     adjacency_dict = _adjacency_matrix_to_dict(adjacency_matrix)
+    hidden_activation = network.hidden_activation \
+        if isinstance(network.hidden_activation, eqx.Module) \
+        else network.hidden_activation_
+    output_activation_elem = network.output_activation_elem \
+        if isinstance(network.output_activation_elem, eqx.Module) \
+        else network.output_activation_elem_
 
     network = NeuralNetwork(
         network.num_neurons - len(ids),
         adjacency_dict,
         input_neurons,
         output_neurons,
-        network.activation,
-        network.output_activation,
+        hidden_activation,
+        output_activation_elem,
+        network.output_activation_group,
         dropout_p,
         key=eqxe.get_state(network.key, jr.PRNGKey(0)),
         parameter_matrix=parameter_matrix

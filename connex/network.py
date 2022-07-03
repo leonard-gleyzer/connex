@@ -23,8 +23,11 @@ class NeuralNetwork(Module):
     this.
     """
     parameter_matrix: jnp.array
-    activation: Callable
-    output_activation: Callable
+    hidden_activation: Callable
+    output_activation_elem: Callable
+    output_activation_group: Callable
+    hidden_activation_: Callable
+    output_activation_elem_: Callable
     topo_batches: Sequence[jnp.array] = static_field()
     adjacency_dict: Mapping[int, Sequence[int]] = static_field()
     adjacency_matrix: jnp.array = static_field()
@@ -40,8 +43,9 @@ class NeuralNetwork(Module):
         adjacency_dict: Mapping[int, Sequence[int]],
         input_neurons: Sequence[int],
         output_neurons: Sequence[int],
-        activation: Callable = jnn.silu,
-        output_activation: Callable = _identity,
+        hidden_activation: Callable = jnn.silu,
+        output_activation_elem: Callable = _identity,
+        output_activation_group: Callable = _identity,
         dropout_p: Union[float, Sequence[float]] = 0.,
         *,
         key: Optional[jr.PRNGKey] = None,
@@ -60,11 +64,14 @@ class NeuralNetwork(Module):
         - `output_neurons`: A sequence of `int` indicating the ids of the 
             output neurons. The order here matters, as the output data will be
             read from the output neurons in the order passed in here.
-        - `activation`: The activation function applied element-wise to the 
+        - `hidden_activation`: The activation function applied element-wise to the 
             hidden (i.e. non-input, non-output) neurons. It can itself be a 
             trainable `equinox.Module`.
-        - `output_activation`: The activation function applied element-wise to 
+        - `output_activation_elem`: The activation function applied element-wise to 
             the  output neurons. It can itself be a trainable `equinox.Module`.
+        - `output_activation_group`: The activation function applied to the output 
+            neurons as a whole after applying `output_activation_elem` element-wise, 
+            e.g. `jax.nn.softmax`. It can itself be a trainable `equinox.Module`.
         - `dropout_p`: Dropout probability. If a single `float`, the same dropout
             probability will be applied to all hidden neurons. If a `Sequence[float]`,
             the sequence must have length `num_neurons`, where `dropout_p[i]` is the
@@ -90,11 +97,15 @@ class NeuralNetwork(Module):
 
         # Activations may themselves be `eqx.Module`s, so we do this to ensure
         # that both `Module` and non-`Module` activations work with the same
-        # input shape.
-        self.activation = activation \
-            if isinstance(activation, Module) else vmap(activation)
-        self.output_activation = output_activation \
-            if isinstance(output_activation, Module) else vmap(output_activation)
+        # input shape. The copies (hidden_activation_ and output_activation_elem_) 
+        # are for plasticity functionality.
+        self.hidden_activation = hidden_activation \
+            if isinstance(hidden_activation, Module) else vmap(hidden_activation)
+        self.output_activation_elem = output_activation_elem \
+            if isinstance(output_activation_elem, Module) else vmap(output_activation_elem)
+        self.hidden_activation_ = hidden_activation
+        self.output_activation_elem_ = output_activation_elem
+        self.output_activation_group = output_activation_group
 
         # Set the random key. We use eqxe.StateIndex here so that the key 
         # can be updated after every forward pass. This ensures that the
@@ -172,8 +183,9 @@ class NeuralNetwork(Module):
             # Set new values.
             values = values.at[tb].set(output_values)
 
-        # Return values pertaining to output neurons.
-        return values[self.output_neurons]
+        # Return values pertaining to output neurons, with the group-wise 
+        # output activation applied.
+        return self.output_activation_group(values[self.output_neurons])
 
 
     def _fire_neuron(
@@ -196,8 +208,8 @@ class NeuralNetwork(Module):
             def exec_if_not_input_neuron() -> float:
                 return jnp.squeeze(lax.cond(
                     jnp.isin(id, self.output_neurons),
-                    lambda: self.output_activation(affine),
-                    lambda: self.activation(affine)
+                    lambda: self.output_activation_elem(affine),
+                    lambda: self.hidden_activation(affine)
                 ))
 
             return lax.cond(
