@@ -164,4 +164,4 @@ def test_networkx():
         (1, 3, {'weight': mlp.parameter_matrix[3, 1]}),
         (2, 3, {'weight': mlp.parameter_matrix[3, 2]}),
     ]
-    eqx.tree_equal(edges, true_edges)
+    assert eqx.tree_equal(edges, true_edges)
