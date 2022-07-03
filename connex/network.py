@@ -10,8 +10,8 @@ from jax import vmap, lax
 
 import numpy as np
 
-from custom_types import Array
-from utils import _adjacency_dict_to_matrix, _identity
+from .custom_types import Array
+from .utils import _adjacency_dict_to_matrix, _identity
 
 
 class NeuralNetwork(Module):
