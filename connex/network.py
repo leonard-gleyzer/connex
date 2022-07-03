@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import jax.random as jr
 from jax import vmap, lax
 
+import networkx as nx
 import numpy as np
 
 from .custom_types import Array
@@ -333,3 +334,43 @@ class NeuralNetwork(Module):
         assert jnp.all(jnp.greater_equal(dropout_p, 0))
         assert jnp.all(jnp.less_equal(dropout_p, 1))
         eqxe.set_state(self.dropout_p, dropout_p)
+
+
+    def to_networkx_graph(self) -> nx.DiGraph:
+        """NetworkX (https://networkx.org) is a popular Python library for network 
+        analysis. This function returns an instance of NetworkX's directed graph object 
+        `networkx.DiGraph` that represents the structure of the neural network. This may be 
+        useful for analyzing and/or debugging the connectivity structure of the network.
+
+        **Returns**:
+
+        A `network.DiGraph` object that represents the structure of the network, where
+        the neurons are nodes with the same numbering. 
+        
+        The nodes have the following field(s):
+            - `group`: one of `{'input', 'hidden', 'output'}.
+            - `bias`: The corresponding neuron's bias (a float).
+
+        The edges have the following field(s):
+            - `weight`: The corresponding network weight (a float).
+        """            
+        graph = nx.DiGraph()
+
+        for id in range(self.num_neurons):
+            if jnp.isin(id, self.input_neurons):
+                group = 'input'
+                neuron_bias = None
+            elif jnp.isin(id, self.output_neurons):
+                group = 'output'
+                neuron_bias = self.parameter_matrix[id, -1] 
+            else:
+                group = 'hidden'
+                neuron_bias = self.parameter_matrix[id, -1] 
+            graph.add_node(id, group=group, bias=neuron_bias)
+            
+        for (neuron, outputs) in self.adjacency_dict.items():
+            for output in outputs:
+                weight = self.parameter_matrix[output, neuron]
+                graph.add_edge(neuron, output, weight=weight)
+
+        return graph
