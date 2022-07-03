@@ -22,7 +22,8 @@ class MCMLP(NeuralNetwork):
         width: int,
         depth: int,
         activation: Callable = jnn.silu,
-        output_activation: Callable = _identity,
+        output_activation_elem: Callable = _identity,
+        output_activation_group: Callable = _identity,
         *,
         key: Optional[jr.PRNGKey] = None,
         **kwargs,
@@ -36,7 +37,11 @@ class MCMLP(NeuralNetwork):
         - `activation`: The activation function applied element-wise to the 
             hidden (i.e. non-input, non-output) neurons. It can itself be a 
             trainable equinox Module.
-        - `output_activation`: The activation function applied element-wise to 
+        - `output_activation_elem`: The activation function applied element-wise to 
+            the  output neurons. It can itself be a trainable `equinox.Module`.
+        - `output_activation_group`: The activation function applied to the output 
+            neurons as a whole after applying `output_activation_elem` element-wise, 
+            e.g. `jax.nn.softmax`. It can itself be a trainable `equinox.Module`.
             the  output neurons. It can itself be a trainable equinox Module.
         - `key`: The `PRNGKey` used to initialize parameters. Optional, keyword-only 
             argument. Defaults to `jax.random.PRNGKey(0)`.
@@ -62,7 +67,8 @@ class MCMLP(NeuralNetwork):
             input_neurons,
             output_neurons,
             activation,
-            output_activation,
+            output_activation_elem,
+            output_activation_group,
             key=key,
             **kwargs
         )

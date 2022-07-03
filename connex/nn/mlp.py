@@ -19,7 +19,8 @@ class MLP(NeuralNetwork):
         width: int,
         depth: int,
         activation: Callable = jnn.silu,
-        output_activation: Callable = _identity,
+        output_activation_elem: Callable = _identity,
+        output_activation_group: Callable = _identity,
         *,
         key: Optional[jr.PRNGKey] = None,
         **kwargs,
@@ -60,7 +61,8 @@ class MLP(NeuralNetwork):
             input_neurons,
             output_neurons,
             activation,
-            output_activation,
+            output_activation_elem,
+            output_activation_group,
             key=key,
             **kwargs
         )
