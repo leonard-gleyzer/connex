@@ -62,7 +62,7 @@ def test_training():
     
 def test_nn_activation_functions():
     eqx_mlp = eqx.nn.MLP(1, 1, 16, 2, jnn.silu, key=jr.PRNGKey(0))
-    cnx_mlp = cnx.nn.MLP(1, 1, 16, 2, eqx_mlp, eqx_mlp)
+    cnx_mlp = cnx.nn.MLP(1, 1, 16, 2, eqx_mlp, eqx_mlp, eqx_mlp)
 
     optim = optax.adam(1e-3)
     opt_state = optim.init(eqx.filter(cnx_mlp, eqx.is_array))
