@@ -89,27 +89,43 @@ def test_nn_activation_functions():
     for i in range(len(eqx_mlp.layers)):
         assert not jnp.array_equal(
             eqx_mlp.layers[i].weight, 
-            cnx_mlp.activation.layers[i].weight
+            cnx_mlp.hidden_activation.layers[i].weight
         )
         assert not jnp.array_equal(
             eqx_mlp.layers[i].bias, 
-            cnx_mlp.activation.layers[i].bias
+            cnx_mlp.hidden_activation.layers[i].bias
         )
         assert not jnp.array_equal(
             eqx_mlp.layers[i].weight, 
-            cnx_mlp.output_activation.layers[i].weight
+            cnx_mlp.output_activation_elem.layers[i].weight
         )
         assert not jnp.array_equal(
             eqx_mlp.layers[i].bias, 
-            cnx_mlp.output_activation.layers[i].bias
+            cnx_mlp.output_activation_elem.layers[i].bias
         )
         assert not jnp.array_equal(
-            cnx_mlp.activation.layers[i].weight,
-            cnx_mlp.output_activation.layers[i].weight
+            cnx_mlp.hidden_activation.layers[i].weight,
+            cnx_mlp.output_activation_elem.layers[i].weight
         )
         assert not jnp.array_equal(
-            cnx_mlp.activation.layers[i].bias,
-            cnx_mlp.output_activation.layers[i].bias
+            cnx_mlp.hidden_activation.layers[i].bias,
+            cnx_mlp.output_activation_elem.layers[i].bias
+        )
+        assert not jnp.array_equal(
+            eqx_mlp.layers[i].weight, 
+            cnx_mlp.output_activation_group.layers[i].weight
+        )
+        assert not jnp.array_equal(
+            eqx_mlp.layers[i].bias, 
+            cnx_mlp.output_activation_group.layers[i].bias
+        )
+        assert not jnp.array_equal(
+            cnx_mlp.hidden_activation.layers[i].weight,
+            cnx_mlp.output_activation_group.layers[i].weight
+        )
+        assert not jnp.array_equal(
+            cnx_mlp.hidden_activation.layers[i].bias,
+            cnx_mlp.output_activation_group.layers[i].bias
         )
 
 
