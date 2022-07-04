@@ -70,6 +70,7 @@ optim = optax.adam(1e-3)
 opt_state = optim.init(eqx.filter(network, eqx.is_array))
 
 # Define the loss function
+@eqx.filter_value_and_grad
 def loss_fn(model, x, y):
     preds = jax.vmap(model)(x)
     return jnp.mean((preds - y) ** 2)
@@ -77,7 +78,7 @@ def loss_fn(model, x, y):
 # Define a single training step
 @eqx.filter_jit
 def step(model, optim, opt_state, X_batch, y_batch):
-    loss, grads = eqx.filter_value_and_grad(loss_fn)(model, X_batch, y_batch)
+    loss, grads = loss_fn(model, X_batch, y_batch)
     updates, opt_state = optim.update(grads, opt_state, model)
     model = eqx.apply_updates(model, updates)
     return model, opt_state, loss
