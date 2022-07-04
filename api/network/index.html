@@ -534,9 +534,10 @@ this.</p>
     applied to input and output neurons as well.</li>
 <li><code>key</code>: The <code>jax.random.PRNGKey</code> used for parameter initialization and dropout. 
     Optional, keyword-only argument. Defaults to <code>jax.random.PRNGKey(0)</code>.</li>
-<li><code>parameter_matrix</code>: A <code>jnp.array</code> of shape <code>(N, N + 1)</code> where entry <code>[i, j]</code> is 
-    neuron <code>i</code>'s weight for neuron <code>j</code>, and entry <code>[i, N]</code> is neuron <code>i</code>'s bias. 
-    Optional, keyword-only argument -- used primarily for plasticity functionality.</li>
+<li><code>parameter_matrix</code>: A <code>jnp.array</code> of shape <code>(num_neurons, num_neurons + 1)</code> 
+    where entry <code>[i, j]</code> is neuron <code>i</code>'s weight for neuron <code>j</code>, and entry 
+    <code>[i, num_neurons]</code> is neuron <code>i</code>'s bias. Optional, keyword-only argument -- 
+    used primarily for plasticity functionality.</li>
 </ul>
 
     </div>
@@ -646,11 +647,15 @@ useful for analyzing and/or debugging the connectivity structure of the network.
 <p><strong>Returns</strong>:</p>
 <p>A <code>network.DiGraph</code> object that represents the structure of the network, where
 the neurons are nodes with the same numbering. </p>
-<p>The nodes have the following field(s):
-    - <code>group</code>: one of <code>{'input', 'hidden', 'output'}.
-    -</code>bias`: The corresponding neuron's bias (a float).</p>
-<p>The edges have the following field(s):
-    - <code>weight</code>: The corresponding network weight (a float).</p>
+<p>The nodes have the following field(s):</p>
+<ul>
+<li><code>group</code>: One of {<code>'input'</code>, <code>'hidden'</code>, <code>'output'</code>} (a string).</li>
+<li><code>bias</code>: The corresponding neuron's bias (a float).</li>
+</ul>
+<p>The edges have the following field(s):</p>
+<ul>
+<li><code>weight</code>: The corresponding network weight (a float).</li>
+</ul>
 
     </div>
 
