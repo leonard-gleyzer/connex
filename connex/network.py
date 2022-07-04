@@ -17,7 +17,7 @@ from .utils import _adjacency_dict_to_matrix, _identity
 
 class NeuralNetwork(Module):
     """
-    A neural network whose structure is primarily specified by an adjecency matrix
+    A neural network whose structure is primarily specified by an adjecency dict
     representing a directed acyclic graph (DAG) and sequences of ints specifying
     which neurons are input and output neurons. Create your model by inheriting from
     this.
