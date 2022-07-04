@@ -169,7 +169,7 @@ def add_neurons(
             original network that feed into the new neuron.
         * `'out_neurons'`: An `Optional[Sequence[int]]` indexing the neurons from the 
             original network which the new neuron feeds into.
-        * `'group'`: One of `{'input', 'hidden', 'output'}`. A `str` representing
+        * `'group'`: One of {`'input'`, `'hidden'`, `'output'`}. A `str` representing
             which group the new neuron belongs to.
         * `'dropout_p'`: An `Optional[float]`, the dropout probability for the new neuron. 
             Defaults to 0.

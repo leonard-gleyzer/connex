@@ -79,9 +79,10 @@ class NeuralNetwork(Module):
             applied to input and output neurons as well.
         - `key`: The `jax.random.PRNGKey` used for parameter initialization and dropout. 
             Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
-        - `parameter_matrix`: A `jnp.array` of shape `(N, N + 1)` where entry `[i, j]` is 
-            neuron `i`'s weight for neuron `j`, and entry `[i, N]` is neuron `i`'s bias. 
-            Optional, keyword-only argument -- used primarily for plasticity functionality.
+        - `parameter_matrix`: A `jnp.array` of shape `(num_neurons, num_neurons + 1)` 
+            where entry `[i, j]` is neuron `i`'s weight for neuron `j`, and entry 
+            `[i, num_neurons]` is neuron `i`'s bias. Optional, keyword-only argument -- 
+            used primarily for plasticity functionality.
         """
         super().__init__(**kwargs)
         input_neurons = jnp.array(input_neurons, dtype=int)
@@ -348,11 +349,13 @@ class NeuralNetwork(Module):
         the neurons are nodes with the same numbering. 
         
         The nodes have the following field(s):
-            - `group`: one of `{'input', 'hidden', 'output'}.
-            - `bias`: The corresponding neuron's bias (a float).
+
+        - `group`: One of {`'input'`, `'hidden'`, `'output'`} (a string).
+        - `bias`: The corresponding neuron's bias (a float).
 
         The edges have the following field(s):
-            - `weight`: The corresponding network weight (a float).
+
+        - `weight`: The corresponding network weight (a float).
         """            
         graph = nx.DiGraph()
 
