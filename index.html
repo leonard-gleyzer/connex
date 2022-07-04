@@ -523,6 +523,7 @@
 <span class="n">opt_state</span> <span class="o">=</span> <span class="n">optim</span><span class="o">.</span><span class="n">init</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">network</span><span class="p">,</span> <span class="n">eqx</span><span class="o">.</span><span class="n">is_array</span><span class="p">))</span>
 
 <span class="c1"># Define the loss function</span>
+<span class="nd">@eqx</span><span class="o">.</span><span class="n">filter_value_and_grad</span>
 <span class="k">def</span> <span class="nf">loss_fn</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
     <span class="n">preds</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span><span class="n">model</span><span class="p">)(</span><span class="n">x</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">mean</span><span class="p">((</span><span class="n">preds</span> <span class="o">-</span> <span class="n">y</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
@@ -530,7 +531,7 @@
 <span class="c1"># Define a single training step</span>
 <span class="nd">@eqx</span><span class="o">.</span><span class="n">filter_jit</span>
 <span class="k">def</span> <span class="nf">step</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">optim</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">X_batch</span><span class="p">,</span> <span class="n">y_batch</span><span class="p">):</span>
-    <span class="n">loss</span><span class="p">,</span> <span class="n">grads</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">filter_value_and_grad</span><span class="p">(</span><span class="n">loss_fn</span><span class="p">)(</span><span class="n">model</span><span class="p">,</span> <span class="n">X_batch</span><span class="p">,</span> <span class="n">y_batch</span><span class="p">)</span>
+    <span class="n">loss</span><span class="p">,</span> <span class="n">grads</span> <span class="o">=</span> <span class="n">loss_fn</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">X_batch</span><span class="p">,</span> <span class="n">y_batch</span><span class="p">)</span>
     <span class="n">updates</span><span class="p">,</span> <span class="n">opt_state</span> <span class="o">=</span> <span class="n">optim</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">grads</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">model</span><span class="p">)</span>
     <span class="n">model</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">apply_updates</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">updates</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">model</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">loss</span>
@@ -554,7 +555,7 @@
 <span class="c1"># Set dropout probability</span>
 <span class="n">network</span><span class="o">.</span><span class="n">set_dropout_p</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>
 </code></pre></div>
-<p>That's all there is to it.  The parameters have been retained for neurons in the original network that have not been removed. <code>connex.remove_neurons</code> also returns auxiliary information about neuron ids, since removal of neurons re-numbers the remaining ones. Furthermore, since a <code>connex.NeuralNetwork</code> is an <code>equinox.Module</code>, it can seamlessly be used as a submodule inside other Equinox Modules.</p>
+<p>That's all there is to it.  The parameters have been retained for neurons in the original network that have not been removed. Furthermore, since a <code>connex.NeuralNetwork</code> is an <code>equinox.Module</code>, it can seamlessly be used as a submodule inside other Equinox Modules.</p>
 <p>For more information about manipulating connectivity structure and the <code>NeuralNetwork</code> base class, please see the API section of the documentation. For examples of subclassing <code>NeuralNetwork</code>, please see <code>connex.nn</code>.</p>
 <p>Feedback is greatly appeciated!</p>
                 
