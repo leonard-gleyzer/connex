@@ -18,7 +18,7 @@ class MLP(NeuralNetwork):
         output_size: int,
         width: int,
         depth: int,
-        activation: Callable = jnn.silu,
+        hidden_activation: Callable = jnn.silu,
         output_activation_elem: Callable = _identity,
         output_activation_group: Callable = _identity,
         *,
@@ -31,7 +31,7 @@ class MLP(NeuralNetwork):
         - `output_size`: The number of neurons in the output layer.
         - `width`: The number of neurons in each hidden layer.
         - `depth`: The number of hidden layers.
-        - `activation`: The activation function applied element-wise to the 
+        - `hidden_activation`: The activation function applied element-wise to the 
             hidden (i.e. non-input, non-output) neurons. It can itself be a 
             trainable equinox Module.
         - `output_activation`: The activation function applied element-wise to 
@@ -60,7 +60,7 @@ class MLP(NeuralNetwork):
             adjacency_dict,
             input_neurons,
             output_neurons,
-            activation,
+            hidden_activation,
             output_activation_elem,
             output_activation_group,
             key=key,
