@@ -105,7 +105,7 @@ network, _ = cnx.remove_neurons(network, [9])
 network.set_dropout_p(0.1)
 ```
 
-That's all there is to it.  The parameters have been retained for neurons in the original network that have not been removed. `connex.remove_neurons` also returns auxiliary information about neuron ids, since removal of neurons re-numbers the remaining ones. Furthermore, since a `connex.NeuralNetwork` is an `equinox.Module`, it can seamlessly be used as a submodule inside other Equinox Modules.
+That's all there is to it.  The parameters have been retained for neurons in the original network that have not been removed. Furthermore, since a `connex.NeuralNetwork` is an `equinox.Module`, it can seamlessly be used as a submodule inside other Equinox Modules.
 
 For more information about manipulating connectivity structure and the `NeuralNetwork` base class, please see the API section of the documentation. For examples of subclassing `NeuralNetwork`, please see `connex.nn`.
 
