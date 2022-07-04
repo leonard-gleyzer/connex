@@ -82,7 +82,7 @@ def loss_fn(model, x, y):
 
 # Define a single training step
 @eqx.filter_jit
-def step(model, optim, opt_state, x, y):
+def step(model, opt_state, x, y):
     loss, grads = loss_fn(model, x, y)
     updates, opt_state = optim.update(grads, opt_state, model)
     model = eqx.apply_updates(model, updates)
@@ -95,7 +95,7 @@ y = jnp.hstack((jnp.cos(x), jnp.sin(x)))
 # Training loop
 n_epochs = 1000
 for _ in range(n_epochs):
-    network, opt_state, loss = step(network, optim, opt_state, x, y)
+    network, opt_state, loss = step(network, opt_state, x, y)
 ```
 
 Now suppose we wish to add connections 1 &rarr; 6 and 2 &rarr; 11, remove neuron 9, and set the dropout probability of all hidden neurons to 0.1:
