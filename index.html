@@ -554,7 +554,7 @@
 <span class="c1"># Set dropout probability</span>
 <span class="n">network</span><span class="o">.</span><span class="n">set_dropout_p</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>
 </code></pre></div>
-<p>That's all there is to it.  The parameters have been retained for neurons in the original network that have not been removed. <code>connex.remove_neurons</code> also returns auxiliary information about neuron ids, since removal of neurons re-numbers the remaining ones. </p>
+<p>That's all there is to it.  The parameters have been retained for neurons in the original network that have not been removed. <code>connex.remove_neurons</code> also returns auxiliary information about neuron ids, since removal of neurons re-numbers the remaining ones. Furthermore, since a <code>connex.NeuralNetwork</code> is an <code>equinox.Module</code>, it can seamlessly be used as a submodule inside other Equinox Modules.</p>
 <p>For more information about manipulating connectivity structure and the <code>NeuralNetwork</code> base class, please see the API section of the documentation. For examples of subclassing <code>NeuralNetwork</code>, please see <code>connex.nn</code>.</p>
 <p>Feedback is greatly appeciated!</p>
                 

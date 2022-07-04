@@ -500,7 +500,7 @@ this.</p>
 
 
 <h5 id="connex.NeuralNetwork.__init__" class="doc doc-heading">
-<code class="highlight language-python"><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">num_neurons</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">adjacency_dict</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span> <span class="n">input_neurons</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">output_neurons</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">activation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">silu</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">output_activation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">_identity</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">dropout_p</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PRNGKey</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">parameter_matrix</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Array</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+<code class="highlight language-python"><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">num_neurons</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">adjacency_dict</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span> <span class="n">input_neurons</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">output_neurons</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">hidden_activation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">silu</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">output_activation_elem</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">_identity</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">output_activation_group</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">_identity</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">dropout_p</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PRNGKey</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">parameter_matrix</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Array</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
 
 
 <a href="#connex.NeuralNetwork.__init__" class="headerlink" title="Permanent link">¤</a></h5>
@@ -519,11 +519,14 @@ this.</p>
 <li><code>output_neurons</code>: A sequence of <code>int</code> indicating the ids of the 
     output neurons. The order here matters, as the output data will be
     read from the output neurons in the order passed in here.</li>
-<li><code>activation</code>: The activation function applied element-wise to the 
+<li><code>hidden_activation</code>: The activation function applied element-wise to the 
     hidden (i.e. non-input, non-output) neurons. It can itself be a 
     trainable <code>equinox.Module</code>.</li>
-<li><code>output_activation</code>: The activation function applied element-wise to 
+<li><code>output_activation_elem</code>: The activation function applied element-wise to 
     the  output neurons. It can itself be a trainable <code>equinox.Module</code>.</li>
+<li><code>output_activation_group</code>: The activation function applied to the output 
+    neurons as a whole after applying <code>output_activation_elem</code> element-wise, 
+    e.g. <code>jax.nn.softmax</code>. It can itself be a trainable <code>equinox.Module</code>.</li>
 <li><code>dropout_p</code>: Dropout probability. If a single <code>float</code>, the same dropout
     probability will be applied to all hidden neurons. If a <code>Sequence[float]</code>,
     the sequence must have length <code>num_neurons</code>, where <code>dropout_p[i]</code> is the
@@ -617,6 +620,37 @@ is the dropout probability of neuron <code>i</code>.</p>
     dropout probability for neuron <code>i</code>. Note that this allows dropout to be 
     applied to input and output neurons as well.</li>
 </ul>
+
+    </div>
+
+  </div>
+
+
+
+  <div class="doc doc-object doc-method">
+
+
+
+<h5 id="connex.NeuralNetwork.to_networkx_graph" class="doc doc-heading">
+<code class="highlight language-python"><span class="n">to_networkx_graph</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DiGraph</span></code>
+
+
+<a href="#connex.NeuralNetwork.to_networkx_graph" class="headerlink" title="Permanent link">¤</a></h5>
+
+    <div class="doc doc-contents ">
+
+      <p>NetworkX (https://networkx.org) is a popular Python library for network 
+analysis. This function returns an instance of NetworkX's directed graph object 
+<code>networkx.DiGraph</code> that represents the structure of the neural network. This may be 
+useful for analyzing and/or debugging the connectivity structure of the network.</p>
+<p><strong>Returns</strong>:</p>
+<p>A <code>network.DiGraph</code> object that represents the structure of the network, where
+the neurons are nodes with the same numbering. </p>
+<p>The nodes have the following field(s):
+    - <code>group</code>: one of <code>{'input', 'hidden', 'output'}.
+    -</code>bias`: The corresponding neuron's bias (a float).</p>
+<p>The edges have the following field(s):
+    - <code>weight</code>: The corresponding network weight (a float).</p>
 
     </div>
 
