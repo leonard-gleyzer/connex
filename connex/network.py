@@ -137,7 +137,7 @@ class NeuralNetwork(Module):
     @filter_jit
     def __call__(self, x: Array) -> Array:
         """The forward pass of the network. Neurons are "fired" in topological batch
-        order (see https://arxiv.org/pdf/1911.06904.pdf), with `jax.vmap` 
+        order (see Section 2.2 of https://arxiv.org/pdf/2101.07965.pdf), with `jax.vmap` 
         vectorization used within each topological batch.
         
         **Arguments**:
@@ -345,7 +345,7 @@ class NeuralNetwork(Module):
 
         **Returns**:
 
-        A `network.DiGraph` object that represents the structure of the network, where
+        A `networkx.DiGraph` object that represents the structure of the network, where
         the neurons are nodes with the same numbering. 
         
         The nodes have the following field(s):
