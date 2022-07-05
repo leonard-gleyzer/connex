@@ -559,7 +559,7 @@ this.</p>
     <div class="doc doc-contents ">
 
       <p>The forward pass of the network. Neurons are "fired" in topological batch
-order (see https://arxiv.org/pdf/1911.06904.pdf), with <code>jax.vmap</code> 
+order (see Section 2.2 of https://arxiv.org/pdf/2101.07965.pdf), with <code>jax.vmap</code> 
 vectorization used within each topological batch.</p>
 <p><strong>Arguments</strong>:</p>
 <ul>
@@ -645,7 +645,7 @@ analysis. This function returns an instance of NetworkX's directed graph object
 <code>networkx.DiGraph</code> that represents the structure of the neural network. This may be 
 useful for analyzing and/or debugging the connectivity structure of the network.</p>
 <p><strong>Returns</strong>:</p>
-<p>A <code>network.DiGraph</code> object that represents the structure of the network, where
+<p>A <code>networkx.DiGraph</code> object that represents the structure of the network, where
 the neurons are nodes with the same numbering. </p>
 <p>The nodes have the following field(s):</p>
 <ul>
