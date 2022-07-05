@@ -143,11 +143,6 @@ def test_dropout():
 
 def test_networkx():
     mlp = cnx.nn.MLP(1, 1, 2, 1)
-    mlp = eqx.tree_at(
-        lambda tree: tree.parameter_matrix, 
-        mlp, 
-        jnp.zeros(mlp.parameter_matrix.shape, dtype=float)
-    )
     mlp_digraph = mlp.to_networkx_graph()
     nodes = list(mlp_digraph.nodes.data())
     true_nodes = [
