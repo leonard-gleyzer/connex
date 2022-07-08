@@ -44,7 +44,7 @@ classifiers = [
 
 python_requires = "~=3.7"
 
-install_requires = ["jax>=0.3.4", "equinox>=0.5.2", "optax>=0.1.2", "networkx"]
+install_requires = ["jax>=0.3.4", "equinox>=0.5.2", "optax>=0.1.2", "networkx>=2.5"]
 
 setuptools.setup(
     name=name,
