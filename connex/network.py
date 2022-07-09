@@ -9,7 +9,6 @@ import jax.random as jr
 from jax import vmap, lax
 
 import networkx as nx
-import numpy as np
 
 from .custom_types import Array
 from .utils import _adjacency_dict_to_matrix, _identity
