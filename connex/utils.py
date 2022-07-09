@@ -1,10 +1,8 @@
 import typing
-from typing import Mapping, Optional, Sequence
+from typing import Mapping, Sequence
 import jax.nn as jnn
 import jax.numpy as jnp
-import jax.random as jr
 import numpy as np
-import time
 
 
 # Documentation helpers.
