@@ -14,9 +14,9 @@ pip install connex
 ```
 
 Requires: 
-Python 3.7+
-JAX 0.3.4+
-Equinox 0.5.2+
+Python 3.7+  
+JAX 0.3.4+  
+Equinox 0.5.2+  
 [NetworkX](https://github.com/networkx/networkx) 2.6+
 
 ## Documentation
