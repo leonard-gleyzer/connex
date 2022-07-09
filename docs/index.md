@@ -12,8 +12,6 @@ Connex is a small [JAX](https://github.com/google/jax) library built on [Equinox
 pip install connex
 ```
 
-Requires Python 3.7+, JAX 0.3.4+, and Equinox 0.5.2+.
-
 ## Usage
 
 As a small example, let's create a trainable neural network from the following DAG
