@@ -13,12 +13,6 @@ Connex is a small [JAX](https://github.com/google/jax) library built on [Equinox
 pip install connex
 ```
 
-Requires:  
-Python 3.7+  
-JAX 0.3.4+  
-Equinox 0.5.2+  
-[NetworkX](https://github.com/networkx/networkx) 2.6+
-
 ## Documentation
 
 Available at [https://leonard-gleyzer.github.io/connex/](https://leonard-gleyzer.github.io/connex/).
