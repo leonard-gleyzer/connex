@@ -106,7 +106,7 @@ network, _ = cnx.remove_neurons(network, [9])
 network.set_dropout_p(0.1)
 ```
 
-That's all there is to it.  The parameters have been retained for neurons in the original network that have not been removed. Furthermore, since a `connex.NeuralNetwork` is an `equinox.Module`, it can seamlessly be used as a submodule inside other Equinox Modules.
+That's all there is to it.  The new connections have been initialized with untrained parameters, and the neurons in the original network that have not been removed (along with their respective incoming and outgoing connections) have retained their trained parameters. Furthermore, since a `connex.NeuralNetwork` is an `equinox.Module`, it can seamlessly be used as a submodule inside other Equinox Modules.
 
 For more information about manipulating connectivity structure and the `NeuralNetwork` base class, please see the API section of the documentation. For examples of subclassing `NeuralNetwork`, please see `connex.nn`.
 
