@@ -58,10 +58,10 @@ def test_add_neurons():
     assert jnp.array_equal(new_net.adjacency_matrix, adj_mat)
     assert jnp.array_equal(mlp.parameter_matrix[:, :-1], new_net.parameter_matrix[:6, :6])
     assert jnp.array_equal(mlp.parameter_matrix[:, -1], new_net.parameter_matrix[:6, -1])
-    topo_batches = [[0, 6], [7], [1, 2], [8], [3, 4], [5]]
+    topo_batches = [[0, 6], [7], [1, 2], [8, 3, 4], [5]]
     topo_batches = [jnp.array(tb) for tb in topo_batches]
-    assert len(new_net.topo_batches) == 6
-    for i in range(6):
+    assert len(new_net.topo_batches) == 5, new_net.topo_batches
+    for i in range(5):
         assert jnp.array_equal(topo_batches[i], new_net.topo_batches[i])
         
 

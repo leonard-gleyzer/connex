@@ -90,7 +90,7 @@ class NeuralNetwork(Module):
         self._check_input(num_neurons, adjacency_dict, input_neurons, output_neurons)
         self.adjacency_dict = adjacency_dict
         adjacency_matrix = _adjacency_dict_to_matrix(num_neurons, adjacency_dict)
-        self.topo_batches = self._topological_batching(adjacency_matrix, input_neurons)
+        self.topo_batches = self._topological_batching(adjacency_dict, num_neurons)
         self.adjacency_matrix = adjacency_matrix
         self.input_neurons = input_neurons
         self.output_neurons = output_neurons
@@ -266,37 +266,32 @@ class NeuralNetwork(Module):
 
     def _topological_batching(
         self, 
-        adjacency_matrix: jnp.array, 
-        input_neurons: jnp.array,
+        adjacency_dict: Mapping[int, Sequence[int]], 
+        num_neurons: int,
     ) -> Sequence[jnp.array]:
-        """
-        Topologically sort/batch neurons and also check that 
-        the network is acyclic.
-        """
-        queue = np.array(input_neurons)
-        topo_batches = [np.array(input_neurons)]
-        adjacency_matrix = np.array(adjacency_matrix)
+        """Topologically sort/batch neurons."""
+        graph = nx.DiGraph()
+        graph.add_nodes_from(range(num_neurons))
+        for (neuron, outputs) in adjacency_dict.items():
+            for output in outputs:
+                graph.add_edge(neuron, output)
+        topo_sort = nx.topological_sort(graph)
+        topo_batches = []
+        topo_batch = []
+        nodes_to_remove = []
+        for node in topo_sort:
+            if graph.in_degree(node) == 0:
+                topo_batch.append(node)
+                nodes_to_remove.append(node)
+            else:
+                # topo_batch.sort()
+                topo_batches.append(jnp.array(topo_batch, dtype=int))
+                graph.remove_nodes_from(nodes_to_remove)
+                topo_batch = [node]
+                nodes_to_remove = [node]
+        topo_batches.append(jnp.array(topo_batch, dtype=int))
 
-        while np.size(queue) > 0:
-            neuron, queue = queue[0], queue[1:]
-            outputs = np.argwhere(adjacency_matrix[neuron]).flatten()
-            adjacency_matrix[neuron, outputs] = 0
-            sums = np.sum(adjacency_matrix[:, outputs], axis=0)
-            idx = np.argwhere(sums == 0).flatten()
-            topo_batch = outputs[idx]
-            if np.size(topo_batch) > 0:
-                queue = np.append(queue, topo_batch)
-                topo_batches.append(topo_batch)
-
-        # Check that the graph is acyclic.
-        row_sums = np.sum(adjacency_matrix, axis=1)
-        col_sums = np.sum(adjacency_matrix, axis=0)
-        bad_in_neurons = set(np.argwhere(col_sums).flatten().tolist())
-        bad_out_neurons = set(np.argwhere(row_sums).flatten().tolist())
-        union = bad_in_neurons | bad_out_neurons
-        assert len(union) == 0, f'Cycle(s) found involving neurons {union}'
-
-        return [jnp.array(tb) for tb in topo_batches]
+        return topo_batches
 
 
     def get_dropout_p(self) -> Array:
