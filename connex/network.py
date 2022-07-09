@@ -283,7 +283,6 @@ class NeuralNetwork(Module):
                 topo_batch.append(node)
                 nodes_to_remove.append(node)
             else:
-                # topo_batch.sort()
                 topo_batches.append(jnp.array(topo_batch, dtype=int))
                 graph.remove_nodes_from(nodes_to_remove)
                 topo_batch = [node]
