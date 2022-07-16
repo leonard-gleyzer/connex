@@ -171,9 +171,11 @@ class NeuralNetwork(Module):
         masks = []
         mins = jnp.array(mins, dtype=int)
         maxs = jnp.array(maxs, dtype=int)
+        adjacency_matrix = adjacency_matrix[self.topo_sort_inv][:, self.topo_sort_inv]
         for i in range(len(maxs)):
             mask = jnp.transpose(adjacency_matrix)[self.topo_batches[i + 1], mins[i]:maxs[i]]
             masks.append(mask)
+            self.weights[i] = self.weights[i] * mask
             assert jnp.array_equal(self.weights[i].shape, masks[i].shape), (self.weights[i].shape, masks[i].shape)
         self.masks = masks
 
@@ -226,11 +228,13 @@ class NeuralNetwork(Module):
             output_values = vmap(self._fire_neuron)(tb, affine, values[tb], apply_dropout[tb])
 
             # Set new values.
-            values = values.at[tb].set(output_values)
+            values = values.at[self.topo_sort_inv[tb]].set(output_values)
 
         # Return values pertaining to output neurons, with the group-wise 
         # output activation applied.
-        return self.output_activation_group(values[self.output_neurons])
+        return self.output_activation_group(
+            values[self.topo_sort_inv[self.output_neurons]]
+        )
 
 
     def _fire_neuron(
