@@ -6,13 +6,13 @@ from equinox import Module, filter_jit, static_field
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
-from jax import vmap, lax
+from jax import lax, vmap
 
 import networkx as nx
 import numpy as np
 
 from custom_types import Array
-from utils import _adjacency_dict_to_matrix, _identity
+from utils import _identity, _invert_dict
 
 
 class NeuralNetwork(Module):
@@ -24,19 +24,17 @@ class NeuralNetwork(Module):
     """
     weights: Sequence[jnp.array]
     bias: jnp.array
-    masks: Sequence[jnp.array] = static_field()
-    parameter_matrix: jnp.array = static_field()
     hidden_activation: Callable
     output_activation_elem: Callable
     output_activation_group: Callable
     hidden_activation_: Callable
     output_activation_elem_: Callable
-    idxs: Sequence[jnp.array] = static_field()
-    topo_batches: Sequence[jnp.array] = static_field()
-    topo_sort: jnp.array = static_field()
-    topo_sort_inv: jnp.array = static_field()
     adjacency_dict: Mapping[int, Sequence[int]] = static_field()
-    adjacency_matrix: jnp.array = static_field()
+    adjacency_dict_inv: Mapping[int, Sequence[int]] = static_field()
+    topo_batches: Sequence[jnp.array] = static_field()
+    topo_sort_inv: jnp.array = static_field()
+    masks: Sequence[jnp.array] = static_field()
+    idxs: Sequence[jnp.array] = static_field()
     input_neurons: jnp.array = static_field()
     output_neurons: jnp.array = static_field()
     num_neurons: int = static_field()
@@ -55,7 +53,6 @@ class NeuralNetwork(Module):
         dropout_p: Union[float, Sequence[float]] = 0.,
         *,
         key: Optional[jr.PRNGKey] = None,
-        parameter_matrix: Optional[Array] = None,
         **kwargs,
     ):
         """**Arguments**:
@@ -85,29 +82,19 @@ class NeuralNetwork(Module):
             applied to input and output neurons as well.
         - `key`: The `jax.random.PRNGKey` used for parameter initialization and dropout. 
             Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
-        - `parameter_matrix`: A `jnp.array` of shape `(num_neurons, num_neurons + 1)` 
-            where entry `[i, j]` is neuron `i`'s weight for neuron `j`, and entry 
-            `[i, num_neurons]` is neuron `i`'s bias. Optional, keyword-only argument -- 
-            used primarily for plasticity functionality.
         """
         super().__init__(**kwargs)
-        input_neurons = jnp.array(input_neurons, dtype=int)
-        output_neurons = jnp.array(output_neurons, dtype=int)
-        self._check_input(num_neurons, adjacency_dict, input_neurons, output_neurons)
+        for n in range(num_neurons):
+            if n not in adjacency_dict:
+                adjacency_dict[n] = []
+        adjacency_dict_inv = _invert_dict(adjacency_dict)
+        self._check_input(
+            num_neurons, adjacency_dict, adjacency_dict_inv, input_neurons, output_neurons
+        )
         self.adjacency_dict = adjacency_dict
-        adjacency_matrix = _adjacency_dict_to_matrix(num_neurons, adjacency_dict)
-
-        self.topo_batches = self._topological_batching(adjacency_dict, num_neurons)
-        # self.topo_sizes = jnp.array([jnp.size(tb) for tb in self.topo_batches])
-        topo_sort = self.topo_batches[0]
-        for tb in self.topo_batches[1:]:
-            topo_sort = jnp.append(topo_sort, tb)
-        self.topo_sort = topo_sort
-        self.topo_sort_inv = jnp.argsort(topo_sort)
-
-        self.adjacency_matrix = adjacency_matrix
-        self.input_neurons = input_neurons
-        self.output_neurons = output_neurons
+        self.adjacency_dict_inv = adjacency_dict_inv
+        self.input_neurons = jnp.array(input_neurons, dtype=int)
+        self.output_neurons = jnp.array(output_neurons, dtype=int)
         self.num_neurons = num_neurons
 
         # Activations may themselves be `eqx.Module`s, so we do this to ensure
@@ -122,62 +109,83 @@ class NeuralNetwork(Module):
         self.output_activation_elem_ = output_activation_elem
         self.output_activation_group = output_activation_group
 
+        # Set dropout probabilities. We use `eqxe.StateIndex`` here so that
+        # dropout probabilities can later be modified, if desired.
+        self.dropout_p = eqxe.StateIndex()
+        self.set_dropout_p(dropout_p)
+
+        # Get topological information.
+        topo_batches = self._topological_batching()
+        topo_sort = topo_batches[0]
+        for tb in topo_batches[1:]:
+            topo_sort = np.append(topo_sort, tb)
+        # Maps a neuron id to its position in the topological sort.
+        self.topo_sort_inv = jnp.array(np.argsort(topo_sort), dtype=int)
+        self.topo_batches = [jnp.array(tb, dtype=int) for tb in topo_batches[1:]]
+        num_topo_batches = len(self.topo_batches)
+
+        # Here, `mins[i]` (`maxs[i]`) is the index representing the minimum
+        # (maximum) position -- with respect to the topological order -- of
+        # those neurons strictly necessary to process `self.topo_batches[i]`
+        # from the previous topological batch. If `i == 0`, the previous
+        # topological batch is the input neurons.
+        mins = np.array([])
+        maxs = np.array([])
+        for tb in self.topo_batches:
+            input_locs = [jnp.array(adjacency_dict_inv[int(i)], dtype=int) for i in tb]
+            input_locs_topo = [self.topo_sort_inv[loc] for loc in input_locs]
+            mins_ = np.array([np.amin(locs) for locs in input_locs_topo])
+            maxs_ = np.array([np.amax(locs) for locs in input_locs_topo])
+            mins = np.append(mins, np.amin(mins_))
+            maxs = np.append(maxs, np.amax(maxs_))
+
         # Set the random key. We use eqxe.StateIndex here so that the key 
         # can be updated after every forward pass. This ensures that the
         # random values generated for determining dropout application
         # are different for each forward pass.
         self.key = eqxe.StateIndex()
         key = key if key is not None else jr.PRNGKey(0)
-        eqxe.set_state(self.key, key)
+        *wkeys, bkey, dkey = jr.split(key, num_topo_batches + 2)
+        eqxe.set_state(self.key, dkey)
 
-        # Set dropout probabilities. We use eqxe.StateIndex here so that
-        # dropout probabilities can later be modified, if desired.
-        self.dropout_p = eqxe.StateIndex()
-        self.set_dropout_p(dropout_p)
-
-        # Set parameters.
-        if parameter_matrix is None:
-            # Initialize parameters as being drawn iid ~ N(0, 0.01).
-            parameter_matrix = jr.normal(
-                key, (self.num_neurons, self.num_neurons + 1)
-            ) * 0.1
-        shape = parameter_matrix.shape
-        assert len(shape) == 2
-        assert shape[0] == self.num_neurons
-        assert shape[1] == self.num_neurons + 1
-        self.parameter_matrix = parameter_matrix
-
-        mins = np.array([])
-        maxs = np.array([])
-        for tb in self.topo_batches[1:]:
-            adj_cols = adjacency_matrix[:, tb]
-            input_locs = []
-            for i in range(np.size(tb)):
-                input_locs.append(np.argwhere(adj_cols[:, i]).flatten())
-            input_locs_sorted = [self.topo_sort_inv[il] for il in input_locs]
-            mins_ = np.array([np.amin(ils) for ils in input_locs_sorted])
-            maxs_ = np.array([np.amax(ils) + 1 for ils in input_locs_sorted])
-            mins = np.append(mins, np.amin(mins_))
-            maxs = np.append(maxs, np.amax(maxs_))
-        weight_lengths = np.array(maxs - mins, dtype=int)
-        self.idxs = [jnp.arange(mins[i], maxs[i], dtype=int) for i in range(len(maxs))]
-        keys = jr.split(key, len(self.topo_batches) + 1)
+        # Set the network parameters. Here, `self.bias` is simply a `jnp.array` of
+        # shape `(num_neurons,)`, where `self.bias[i]` is the bias of neuron `i`.
+        # `self.weights`, however, is a list of 2D `jnp.array`s, where `self.weights[i]`
+        # includes the weights used by the neurons in `self.topo_batches[i]`. More
+        # specifically, `self.weights[i][j, k]` is the weight of the connection from 
+        # the neuron with topological index `k + mins[i]`, i.e. neuron `topo_sort[k + mins[i]]`, 
+        # to neuron `self.topo_batches[i][j]`. The weights are stored this way in order to use 
+        # minimal memory while allowing for maximal `vmap` parallelism during the forward pass,
+        # since the minimum and maximum neurons needed to process a topological batch in parallel
+        # will be closest together when in topological order.
+        weight_lengths = np.array(maxs - mins, dtype=int) + 1
         self.weights = [
-            jr.normal(keys[i], (jnp.size(self.topo_batches[i + 1]), weight_lengths[i])) * 0.1
-            for i in range(len(self.topo_batches) - 1)
+            jr.normal(
+                wkeys[i], (jnp.size(self.topo_batches[i]), weight_lengths[i])
+            ) * 0.1
+            for i in range(num_topo_batches)
         ]
-        self.bias = jr.normal(keys[-2], (num_neurons,)) * 0.1
-        eqxe.set_state(self.key, keys[-1])
+        self.bias = jr.normal(bkey, (num_neurons,)) * 0.1
+
+        # Here, `self.masks` is a list of 2D binary `jnp.array` with identical structure
+        # to `self.weights`. These are multiplied by the weights during the forward pass
+        # to mask out weights for connections that are not present in the actual network.
         masks = []
-        mins = jnp.array(mins, dtype=int)
-        maxs = jnp.array(maxs, dtype=int)
-        adjacency_matrix = adjacency_matrix[self.topo_sort_inv][:, self.topo_sort_inv]
-        for i in range(len(maxs)):
-            mask = jnp.transpose(adjacency_matrix)[self.topo_batches[i + 1], mins[i]:maxs[i]]
-            masks.append(mask)
-            self.weights[i] = self.weights[i] * mask
-            assert jnp.array_equal(self.weights[i].shape, masks[i].shape), (self.weights[i].shape, masks[i].shape)
+        for (tb, weights, min_) in zip(self.topo_batches, self.weights, mins):
+            mask = np.zeros_like(weights)
+            for (i, neuron) in enumerate(tb):
+                inputs = jnp.array(adjacency_dict_inv[int(neuron)], dtype=int)
+                inputs_topo = self.topo_sort_inv[inputs] - int(min_)
+                mask[i, inputs_topo] = 1
+            masks.append(jnp.array(mask, dtype=int))
         self.masks = masks
+
+        # Here, `self.idxs[i]` includes the indices -- in topological order -- of the 
+        # neurons needed to process `self.topo_batches[i]`. This is done for the same
+        # memory/parallelism reason as the structure of `self.weights`.
+        self.idxs = [
+            jnp.arange(mins[i], maxs[i] + 1, dtype=int) for i in range(num_topo_batches)
+        ]
 
 
     @filter_jit
@@ -203,7 +211,7 @@ class NeuralNetwork(Module):
         The result array from the forward pass. The order of the array elements will be
         the order of the output neurons passed in during initialization.
         """
-        # Neuron value array, updated as neurons are fired.
+        # Neuron value array, updated as neurons are "fired".
         values = jnp.zeros((self.num_neurons,))
 
         # Dropout.
@@ -231,7 +239,7 @@ class NeuralNetwork(Module):
             ))
 
         # Forward pass in topological batch order.
-        for (tb, weights, mask, idx) in zip(self.topo_batches[1:], self.weights, self.masks, self.idxs):
+        for (tb, weights, mask, idx) in zip(self.topo_batches, self.weights, self.masks, self.idxs):
             # Affine transformation, wx + b.
             affine = vmap(jnp.dot, in_axes=[0, None])(weights * mask, values[idx]) + self.bias[tb]
             # Apply activations/dropout.
@@ -249,30 +257,31 @@ class NeuralNetwork(Module):
         self,
         num_neurons: int, 
         adjacency_dict: Mapping[int, Sequence[int]],
-        input_neurons: jnp.array,
-        output_neurons: jnp.array,
+        adjacency_dict_inv: Mapping[int, Sequence[int]],
+        input_neurons: Sequence[int],
+        output_neurons: Sequence[int],
     ) -> None:
         """
         Check to make sure the input neurons, output neurons,
         and adjacency dict are valid.
         """
+        input_neurons = np.array(input_neurons, dtype=int)
+        output_neurons = np.array(output_neurons, dtype=int)
+
         # Check that the input and output neurons are 1D and nonempty.
-        assert jnp.size(input_neurons.shape) == 1 and jnp.size(input_neurons) > 0
-        assert jnp.size(output_neurons.shape) == 1 and jnp.size(output_neurons) > 0
+        assert np.size(input_neurons.shape) == 1 and np.size(input_neurons) > 0
+        assert np.size(output_neurons.shape) == 1 and np.size(output_neurons) > 0
 
         # Check that the input and output neurons are disjoint.
-        assert jnp.size(jnp.intersect1d(input_neurons, output_neurons)) == 0
+        assert np.size(np.intersect1d(input_neurons, output_neurons)) == 0
 
         # Check that input neurons and neurons with no input are equivalent.
-        adjacency_matrix = _adjacency_dict_to_matrix(num_neurons, adjacency_dict)
-        num_inputs_per_neuron = jnp.sum(adjacency_matrix, axis=0)
-        neurons_with_no_input = jnp.argwhere(num_inputs_per_neuron == 0).flatten()
-        assert jnp.size(jnp.setdiff1d(neurons_with_no_input, input_neurons)) == 0
+        neurons_with_no_input = np.array([i for i in adjacency_dict_inv if not adjacency_dict_inv[i]])
+        assert np.size(np.setdiff1d(neurons_with_no_input, input_neurons)) == 0
 
         # Check that output neurons and neurons with no output are equivalent.
-        num_outputs_per_neuron = jnp.sum(adjacency_matrix, axis=1)
-        neurons_with_no_output = jnp.argwhere(num_outputs_per_neuron == 0).flatten()
-        assert jnp.size(jnp.setdiff1d(neurons_with_no_output, output_neurons)) == 0
+        neurons_with_no_output = np.array([i for i in adjacency_dict if not adjacency_dict[i]])
+        assert np.size(np.setdiff1d(neurons_with_no_output, output_neurons)) == 0
 
         # Check that neuron ids are in the range [0, num_neurons)
         # and that ids are not repeated.
@@ -283,15 +292,14 @@ class NeuralNetwork(Module):
                 assert min(outputs) >= 0 and max(outputs) < num_neurons
 
 
-    def _topological_batching(
-        self, 
-        adjacency_dict: Mapping[int, Sequence[int]], 
-        num_neurons: int,
-    ) -> Sequence[jnp.array]:
-        """Topologically sort/batch neurons."""
+    def _topological_batching(self) -> Sequence[np.array]:
+        """
+        Topologically sort/batch neurons;
+        see Section 2.2 of https://arxiv.org/pdf/2101.07965.pdf.
+        """
         graph = nx.DiGraph()
-        graph.add_nodes_from(range(num_neurons))
-        for (neuron, outputs) in adjacency_dict.items():
+        graph.add_nodes_from(range(len(self.adjacency_dict)))
+        for (neuron, outputs) in self.adjacency_dict.items():
             for output in outputs:
                 graph.add_edge(neuron, output)
         topo_sort = nx.topological_sort(graph)
@@ -303,11 +311,11 @@ class NeuralNetwork(Module):
                 topo_batch.append(node)
                 nodes_to_remove.append(node)
             else:
-                topo_batches.append(jnp.array(topo_batch, dtype=int))
+                topo_batches.append(np.array(topo_batch, dtype=int))
                 graph.remove_nodes_from(nodes_to_remove)
                 topo_batch = [node]
                 nodes_to_remove = [node]
-        topo_batches.append(jnp.array(topo_batch, dtype=int))
+        topo_batches.append(np.array(topo_batch, dtype=int))
 
         return topo_batches
 
