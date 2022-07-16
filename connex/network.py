@@ -9,9 +9,10 @@ import jax.random as jr
 from jax import vmap, lax
 
 import networkx as nx
+import numpy as np
 
-from .custom_types import Array
-from .utils import _adjacency_dict_to_matrix, _identity
+from custom_types import Array
+from utils import _adjacency_dict_to_matrix, _identity
 
 
 class NeuralNetwork(Module):
@@ -21,13 +22,19 @@ class NeuralNetwork(Module):
     which neurons are input and output neurons. Create your model by inheriting from
     this.
     """
-    parameter_matrix: jnp.array
+    weights: Sequence[jnp.array]
+    bias: jnp.array
+    masks: Sequence[jnp.array] = static_field()
+    parameter_matrix: jnp.array = static_field()
     hidden_activation: Callable
     output_activation_elem: Callable
     output_activation_group: Callable
     hidden_activation_: Callable
     output_activation_elem_: Callable
+    idxs: Sequence[jnp.array] = static_field()
     topo_batches: Sequence[jnp.array] = static_field()
+    topo_sort: jnp.array = static_field()
+    topo_sort_inv: jnp.array = static_field()
     adjacency_dict: Mapping[int, Sequence[int]] = static_field()
     adjacency_matrix: jnp.array = static_field()
     input_neurons: jnp.array = static_field()
@@ -89,7 +96,15 @@ class NeuralNetwork(Module):
         self._check_input(num_neurons, adjacency_dict, input_neurons, output_neurons)
         self.adjacency_dict = adjacency_dict
         adjacency_matrix = _adjacency_dict_to_matrix(num_neurons, adjacency_dict)
+
         self.topo_batches = self._topological_batching(adjacency_dict, num_neurons)
+        # self.topo_sizes = jnp.array([jnp.size(tb) for tb in self.topo_batches])
+        topo_sort = self.topo_batches[0]
+        for tb in self.topo_batches[1:]:
+            topo_sort = jnp.append(topo_sort, tb)
+        self.topo_sort = topo_sort
+        self.topo_sort_inv = jnp.argsort(topo_sort)
+
         self.adjacency_matrix = adjacency_matrix
         self.input_neurons = input_neurons
         self.output_neurons = output_neurons
@@ -132,6 +147,36 @@ class NeuralNetwork(Module):
         assert shape[1] == self.num_neurons + 1
         self.parameter_matrix = parameter_matrix
 
+        mins = np.array([])
+        maxs = np.array([])
+        for tb in self.topo_batches[1:]:
+            adj_cols = adjacency_matrix[:, tb]
+            input_locs = []
+            for i in range(np.size(tb)):
+                input_locs.append(np.argwhere(adj_cols[:, i]).flatten())
+            input_locs_sorted = [self.topo_sort_inv[il] for il in input_locs]
+            mins_ = np.array([np.amin(ils) for ils in input_locs_sorted])
+            maxs_ = np.array([np.amax(ils) + 1 for ils in input_locs_sorted])
+            mins = np.append(mins, np.amin(mins_))
+            maxs = np.append(maxs, np.amax(maxs_))
+        weight_lengths = np.array(maxs - mins, dtype=int)
+        self.idxs = [jnp.arange(mins[i], maxs[i], dtype=int) for i in range(len(maxs))]
+        keys = jr.split(key, len(self.topo_batches) + 1)
+        self.weights = [
+            jr.normal(keys[i], (jnp.size(self.topo_batches[i + 1]), weight_lengths[i])) * 0.1
+            for i in range(len(self.topo_batches) - 1)
+        ]
+        self.bias = jr.normal(keys[-2], (num_neurons,)) * 0.1
+        eqxe.set_state(self.key, keys[-1])
+        masks = []
+        mins = jnp.array(mins, dtype=int)
+        maxs = jnp.array(maxs, dtype=int)
+        for i in range(len(maxs)):
+            mask = jnp.transpose(adjacency_matrix)[self.topo_batches[i + 1], mins[i]:maxs[i]]
+            masks.append(mask)
+            assert jnp.array_equal(self.weights[i].shape, masks[i].shape), (self.weights[i].shape, masks[i].shape)
+        self.masks = masks
+
 
     @filter_jit
     def __call__(self, x: Array) -> Array:
@@ -151,13 +196,13 @@ class NeuralNetwork(Module):
         the order of the output neurons passed in during initialization.
         """
         # Neuron value array, updated as neurons are fired.
-        values = jnp.ones((self.num_neurons + 1,))
+        values = jnp.zeros((self.num_neurons,))
         
         # Set input values.
         values = values.at[self.input_neurons].set(x)
 
-        # Zero out network weights where there are no connections.
-        parameters = self.parameter_matrix.at[:, :-1].multiply(self.adjacency_matrix.T)
+        # # Zero out network weights where there are no connections.
+        # parameters = self.parameter_matrix.at[:, :-1].multiply(self.adjacency_matrix.T)
 
         # Dropout.
         key = eqxe.get_state(self.key, jr.PRNGKey(0))
@@ -170,9 +215,9 @@ class NeuralNetwork(Module):
         eqxe.set_state(self.key, new_key)
 
         # Forward pass in topological batch order.
-        for tb in self.topo_batches:
+        for (tb, weights, mask, idx) in zip(self.topo_batches[1:], self.weights, self.masks, self.idxs):
             # Affine transformation, wx + b.
-            affine = vmap(jnp.dot, in_axes=[0, None])(parameters[tb], values)
+            affine = vmap(jnp.dot, in_axes=[0, None])(weights * mask, values[idx]) + self.bias[tb]
 
             # Add a dimension.
             affine = jnp.expand_dims(affine, 1)
