@@ -172,7 +172,7 @@ class NeuralNetwork(Module):
         # Forward pass in topological batch order.
         for tb in self.topo_batches:
             # Affine transformation, wx + b.
-            affine = vmap(jnp.dot, in_axes=[0, None])(parameters[tb], values)
+            affine = parameters[tb] @ values
 
             # Add a dimension.
             affine = jnp.expand_dims(affine, 1)
