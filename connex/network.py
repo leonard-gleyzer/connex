@@ -148,16 +148,15 @@ class NeuralNetwork(Module):
         *wkeys, bkey, dkey = jr.split(key, num_topo_batches + 2)
         eqxe.set_state(self.key, dkey)
 
-        # Set the network parameters. Here, `self.bias` is simply a `jnp.array` of
-        # shape `(num_neurons,)`, where `self.bias[i]` is the bias of neuron `i`.
-        # `self.weights`, however, is a list of 2D `jnp.array`s, where `self.weights[i]`
-        # includes the weights used by the neurons in `self.topo_batches[i]`. More
-        # specifically, `self.weights[i][j, k]` is the weight of the connection from 
-        # the neuron with topological index `k + mins[i]`, i.e. neuron `topo_sort[k + mins[i]]`, 
-        # to neuron `self.topo_batches[i][j]`. The weights are stored this way in order to use 
-        # minimal memory while allowing for maximal `vmap` parallelism during the forward pass,
-        # since the minimum and maximum neurons needed to process a topological batch in parallel
-        # will be closest together when in topological order.
+        # Set the network parameters. Here, `self.bias` is a `jnp.array` of shape `(num_neurons,)`,
+        # where `self.bias[i]` is the bias of neuron `i + num_input_neurons`. `self.weights`,
+        # however, is a list of 2D `jnp.array`s, where `self.weights[i]` includes the weights used 
+        # by the neurons in `self.topo_batches[i]`. More specifically, `self.weights[i][j, k]` is 
+        # the weight of the connection from the neuron with topological index `k + mins[i]`, i.e. 
+        # neuron `topo_sort[k + mins[i]]`, to neuron `self.topo_batches[i][j]`. The weights are stored 
+        # this way in order to use minimal memory while allowing for maximal `vmap` parallelism during 
+        # the forward pass, since the minimum and maximum neurons needed to process a topological batch 
+        # in parallel will be closest together when in topological order.
         weight_lengths = np.array(maxs - mins, dtype=int) + 1
         self.weights = [
             jr.normal(
