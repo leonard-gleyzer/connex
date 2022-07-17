@@ -278,11 +278,15 @@ class NeuralNetwork(Module):
         assert np.size(np.intersect1d(input_neurons, output_neurons)) == 0
 
         # Check that input neurons and neurons with no input are equivalent.
-        neurons_with_no_input = np.array([i for i in adjacency_dict_inv if not adjacency_dict_inv[i]])
+        neurons_with_no_input = np.array(
+            [i for i in adjacency_dict_inv if not adjacency_dict_inv[i]]
+        )
         assert np.size(np.setdiff1d(neurons_with_no_input, input_neurons)) == 0
 
         # Check that output neurons and neurons with no output are equivalent.
-        neurons_with_no_output = np.array([i for i in adjacency_dict if not adjacency_dict[i]])
+        neurons_with_no_output = np.array(
+            [i for i in adjacency_dict if not adjacency_dict[i]]
+        )
         assert np.size(np.setdiff1d(neurons_with_no_output, output_neurons)) == 0
 
         # Check that neuron ids are in the range [0, num_neurons)
