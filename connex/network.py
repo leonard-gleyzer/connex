@@ -148,15 +148,16 @@ class NeuralNetwork(Module):
         *wkeys, bkey, dkey = jr.split(key, num_topo_batches + 2)
         eqxe.set_state(self.key, dkey)
 
-        # Set the network parameters. Here, `self.bias` is a `jnp.array` of shape `(num_neurons,)`,
-        # where `self.bias[i]` is the bias of neuron `i + num_input_neurons`. `self.weights`,
-        # however, is a list of 2D `jnp.array`s, where `self.weights[i]` includes the weights used 
-        # by the neurons in `self.topo_batches[i]`. More specifically, `self.weights[i][j, k]` is 
-        # the weight of the connection from the neuron with topological index `k + mins[i]`, i.e. 
-        # neuron `topo_sort[k + mins[i]]`, to neuron `self.topo_batches[i][j]`. The weights are stored 
-        # this way in order to use minimal memory while allowing for maximal `vmap` parallelism during 
-        # the forward pass, since the minimum and maximum neurons needed to process a topological batch 
-        # in parallel will be closest together when in topological order.
+        # Set the network parameters. Here, `self.bias` is a `jnp.array` of shape 
+        # `(num_neurons - num_input_neurons,)`, where `self.bias[i]` is the bias of neuron 
+        # `i + num_input_neurons`. `self.weights`, on the other hand, is a list of 2D `jnp.array`s, 
+        # where `self.weights[i]` includes the weights used by the neurons in `self.topo_batches[i]`. 
+        # More specifically, `self.weights[i][j, k]` is the weight of the connection from the neuron 
+        # with topological index `k + mins[i]`, i.e. neuron `topo_sort[k + mins[i]]`, to neuron 
+        # `self.topo_batches[i][j]`. The weights are stored this way in order to use minimal memory 
+        # while allowing for maximal `vmap` parallelism during the forward pass, since the minimum 
+        # and maximum neurons needed to process a topological batch in parallel will be closest 
+        # together when in topological order.
         weight_lengths = np.array(maxs - mins, dtype=int) + 1
         self.weights = [
             jr.normal(
@@ -164,7 +165,9 @@ class NeuralNetwork(Module):
             ) * 0.1
             for i in range(num_topo_batches)
         ]
-        self.bias = jr.normal(bkey, (num_neurons,)) * 0.1
+        self.bias = jr.normal(
+            bkey, (num_neurons - jnp.size(self.input_neurons),)
+        ) * 0.1
 
         # Here, `self.masks` is a list of 2D binary `jnp.array` with identical structure
         # to `self.weights`. These are multiplied by the weights during the forward pass
@@ -240,7 +243,8 @@ class NeuralNetwork(Module):
         # Forward pass in topological batch order.
         for (tb, weights, mask, idx) in zip(self.topo_batches, self.weights, self.masks, self.idxs):
             # Affine transformation, wx + b.
-            affine = vmap(jnp.dot, in_axes=[0, None])(weights * mask, values[idx]) + self.bias[tb]
+            affine = vmap(jnp.dot, in_axes=[0, None])(weights * mask, values[idx]) + \
+                self.bias[tb + jnp.size(self.input_neurons)]
             # Apply activations/dropout.
             output_values = vmap(_apply_activation)(tb, affine) * dropout_keep[tb]
             # Set new values.
