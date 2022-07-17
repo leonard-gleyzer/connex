@@ -243,8 +243,7 @@ class NeuralNetwork(Module):
         # Forward pass in topological batch order.
         for (tb, weights, mask, idx) in zip(self.topo_batches, self.weights, self.masks, self.idxs):
             # Affine transformation, wx + b.
-            affine = vmap(jnp.dot, in_axes=[0, None])(weights * mask, values[idx]) + \
-                self.bias[tb - jnp.size(self.input_neurons)]
+            affine = (weights * mask) @ values[idx] + self.bias[tb - jnp.size(self.input_neurons)]
             # Apply activations/dropout.
             output_values = vmap(_apply_activation)(tb, affine) * dropout_keep[tb]
             # Set new values.
