@@ -54,10 +54,10 @@ def add_connections(
     # Set element-wise activations.
     hidden_activation = network.hidden_activation \
         if isinstance(network.hidden_activation, eqx.Module) \
-        else network.hidden_activation_
+        else network._hidden_activation
     output_activation_elem = network.output_activation_elem \
         if isinstance(network.output_activation_elem, eqx.Module) \
-        else network.output_activation_elem_
+        else network._output_activation_elem
 
     # Update connectivity information.
     adjacency_dict = network.adjacency_dict
