@@ -1,4 +1,4 @@
-from typing import Callable, Mapping, Optional, Sequence, Union
+from typing import Callable, Mapping, Optional, Sequence, Tuple, Union
 
 import equinox.experimental as eqxe
 from equinox import Module, filter_jit, static_field
@@ -27,17 +27,22 @@ class NeuralNetwork(Module):
     hidden_activation: Callable
     output_activation_elem: Callable
     output_activation_group: Callable
-    hidden_activation_: Callable
-    output_activation_elem_: Callable
+    _hidden_activation: Callable = static_field()
+    _output_activation_elem: Callable = static_field()
     adjacency_dict: Mapping[int, Sequence[int]] = static_field()
     adjacency_dict_inv: Mapping[int, Sequence[int]] = static_field()
     topo_batches: Sequence[jnp.array] = static_field()
+    neuron_to_topo_batch_idx: Mapping[int, Tuple[int, int]] = static_field()
+    topo_sort: np.array = static_field()
     topo_sort_inv: jnp.array = static_field()
+    mins: np.array = static_field()
+    maxs: np.array = static_field()
     masks: Sequence[jnp.array] = static_field()
     idxs: Sequence[jnp.array] = static_field()
     input_neurons: jnp.array = static_field()
     output_neurons: jnp.array = static_field()
     num_neurons: int = static_field()
+    num_input_neurons: int = static_field()
     dropout_p: eqxe.StateIndex = static_field()
     key: eqxe.StateIndex = static_field()
 
@@ -88,7 +93,7 @@ class NeuralNetwork(Module):
             if n not in adjacency_dict:
                 adjacency_dict[n] = []
         adjacency_dict_inv = _invert_dict(adjacency_dict)
-        self._check_input(
+        self._check_neurons(
             num_neurons, adjacency_dict, adjacency_dict_inv, input_neurons, output_neurons
         )
         self.adjacency_dict = adjacency_dict
@@ -96,18 +101,24 @@ class NeuralNetwork(Module):
         self.input_neurons = jnp.array(input_neurons, dtype=int)
         self.output_neurons = jnp.array(output_neurons, dtype=int)
         self.num_neurons = num_neurons
+        self.num_input_neurons = jnp.size(self.input_neurons)
 
         # Activations may themselves be `eqx.Module`s, so we do this to ensure
         # that both `Module` and non-`Module` activations work with the same
-        # input shape. The copies (hidden_activation_ and output_activation_elem_) 
-        # are for plasticity functionality.
-        self.hidden_activation = hidden_activation \
+        # input shape.
+        hidden_activation_ = hidden_activation \
             if isinstance(hidden_activation, Module) else vmap(hidden_activation)
-        self.output_activation_elem = output_activation_elem \
+        output_activation_elem_ = output_activation_elem \
             if isinstance(output_activation_elem, Module) else vmap(output_activation_elem)
-        self.hidden_activation_ = hidden_activation
-        self.output_activation_elem_ = output_activation_elem
+        self._check_activations(
+            hidden_activation_, output_activation_elem_, output_activation_group
+        )
+        self.hidden_activation = hidden_activation_
+        self.output_activation_elem = output_activation_elem_
         self.output_activation_group = output_activation_group
+        # Done for plasticity functionality.
+        self._hidden_activation = hidden_activation
+        self._output_activation_elem = output_activation_elem
 
         # Set dropout probabilities. We use `eqxe.StateIndex` here so that
         # dropout probabilities can later be modified, if desired.
@@ -119,10 +130,19 @@ class NeuralNetwork(Module):
         topo_sort = topo_batches[0]
         for tb in topo_batches[1:]:
             topo_sort = np.append(topo_sort, tb)
+        self.topo_sort = topo_sort
         # Maps a neuron id to its position in the topological sort.
         self.topo_sort_inv = jnp.array(np.argsort(topo_sort), dtype=int)
+        # The first topo batch is technically the input neurons, but we don't include
+        # those here, since they are handled separately in the forward pass.
         self.topo_batches = [jnp.array(tb, dtype=int) for tb in topo_batches[1:]]
         num_topo_batches = len(self.topo_batches)
+        # Maps a neuron id to its topological batch and position within that batch.
+        neuron_to_topo_batch_idx = {}
+        for i in range(num_topo_batches):
+            for (j, n) in enumerate(self.topo_batches[i]):
+                neuron_to_topo_batch_idx[int(n)] = (i, j)
+        self.neuron_to_topo_batch_idx = neuron_to_topo_batch_idx
 
         # Here, `mins[i]` (`maxs[i]`) is the index representing the minimum
         # (maximum) position -- with respect to the topological order -- of
@@ -138,26 +158,31 @@ class NeuralNetwork(Module):
             maxs_ = np.array([np.amax(locs) for locs in input_locs_topo])
             mins = np.append(mins, np.amin(mins_))
             maxs = np.append(maxs, np.amax(maxs_))
+        self.mins = mins
+        self.maxs = maxs
 
         # Set the random key. We use eqxe.StateIndex here so that the key 
-        # can be updated after every forward pass. This ensures that the
-        # random values generated for determining dropout application
-        # are different for each forward pass.
+        # can be automatically updated after every forward pass. This ensures 
+        # that the random values generated for determining dropout application
+        # are different for each forward pass if the user does not provide
+        # an explicit key.
+        if key is None:
+            key = jr.PRNGKey(0)
         self.key = eqxe.StateIndex()
-        key = key if key is not None else jr.PRNGKey(0)
         *wkeys, bkey, dkey = jr.split(key, num_topo_batches + 2)
         eqxe.set_state(self.key, dkey)
 
         # Set the network parameters. Here, `self.bias` is a `jnp.array` of shape 
-        # `(num_neurons - num_input_neurons,)`, where `self.bias[i]` is the bias of neuron 
-        # `i + num_input_neurons`. `self.weights`, on the other hand, is a list of 2D `jnp.array`s, 
-        # where `self.weights[i]` includes the weights used by the neurons in `self.topo_batches[i]`. 
-        # More specifically, `self.weights[i][j, k]` is the weight of the connection from the neuron 
-        # with topological index `k + mins[i]`, i.e. neuron `topo_sort[k + mins[i]]`, to neuron 
-        # `self.topo_batches[i][j]`. The weights are stored this way in order to use minimal memory 
-        # while allowing for maximal `vmap` parallelism during the forward pass, since the minimum 
-        # and maximum neurons needed to process a topological batch in parallel will be closest 
-        # together when in topological order.
+        # `(num_neurons - num_input_neurons,)`, where `self.bias[i]` is the bias of the neuron with
+        # topological index `i + num_input_neurons`, i.e. neuron `topo_sort[i + num_input_neurons]`.
+        # `self.weights`, on the other hand, is a list of 2D `jnp.array`s, where `self.weights[i]` 
+        # includes the weights used by the neurons in `self.topo_batches[i]`. More specifically, 
+        # `self.weights[i][j, k]` is the weight of the connection from the neuron with topological 
+        # index `k + mins[i]`, i.e. neuron `topo_sort[k + mins[i]]`, to neuron `self.topo_batches[i][j]`. 
+        # The weights are stored this way in order to use minimal memory while allowing for maximal `vmap` 
+        # parallelism during the forward pass, since the minimum and maximum neurons needed to process a 
+        # topological batch in parallel will be closest together when in topological order. 
+        # All parameters are drawn iid ~ N(0, 0.01).
         weight_lengths = np.array(maxs - mins, dtype=int) + 1
         self.weights = [
             jr.normal(
@@ -166,7 +191,7 @@ class NeuralNetwork(Module):
             for i in range(num_topo_batches)
         ]
         self.bias = jr.normal(
-            bkey, (num_neurons - jnp.size(self.input_neurons),)
+            bkey, (num_neurons - self.num_input_neurons,)
         ) * 0.1
 
         # Here, `self.masks` is a list of 2D binary `jnp.array` with identical structure
@@ -217,10 +242,7 @@ class NeuralNetwork(Module):
         values = jnp.zeros((self.num_neurons,))
 
         # Dropout.
-        if key is None:
-            key = eqxe.get_state(self.key, jr.PRNGKey(0))
-            _, new_key = jr.split(key)
-            eqxe.set_state(self.key, new_key)
+        key = self._dropout_key(key)
         dropout_p = self.get_dropout_p()
         rand = jr.uniform(key, dropout_p.shape, minval=0, maxval=1)
         dropout_keep = jnp.greater(rand, dropout_p)
@@ -234,20 +256,23 @@ class NeuralNetwork(Module):
         # Function to apply the activation for a single neuron.
         def _apply_activation(id: int, affine: jnp.array) -> float:
             affine = jnp.expand_dims(affine, 0)
-            return jnp.squeeze(lax.cond(
+            output = lax.cond(
                 jnp.isin(id, self.output_neurons),
                 lambda: self.output_activation_elem(affine),
                 lambda: self.hidden_activation(affine)
-            ))
+            )
+            return jnp.squeeze(output)
 
         # Forward pass in topological batch order.
         for (tb, weights, mask, idx) in zip(self.topo_batches, self.weights, self.masks, self.idxs):
+            # Topological indices of the current topo_batch.
+            tb_topo = self.topo_sort_inv[tb]
             # Affine transformation, wx + b.
-            affine = (weights * mask) @ values[idx] + self.bias[tb - jnp.size(self.input_neurons)]
+            affine = (weights * mask) @ values[idx] + self.bias[tb_topo - self.num_input_neurons]
             # Apply activations/dropout.
             output_values = vmap(_apply_activation)(tb, affine) * dropout_keep[tb]
             # Set new values.
-            values = values.at[self.topo_sort_inv[tb]].set(output_values)
+            values = values.at[tb_topo].set(output_values)
 
         # Return values pertaining to output neurons, with the group-wise 
         # output activation applied.
@@ -255,7 +280,90 @@ class NeuralNetwork(Module):
         return self.output_activation_group(values[output_neurons_topo])
 
 
-    def _check_input(
+    def get_dropout_p(self) -> Array:
+        """Get the per-neuron dropout probabilities.
+        
+        **Returns**:
+
+        A `jnp.array` with shape `(num_neurons,)` where element `i` 
+        is the dropout probability of neuron `i`.
+        """
+        dropout_p = eqxe.get_state(
+            self.dropout_p, 
+            jnp.arange(self.num_neurons, dtype=float)
+        )
+        return dropout_p
+
+
+    def set_dropout_p(self, dropout_p: Union[float, Sequence[float]]) -> None:
+        """Set the per-neuron dropout probabilities.
+        
+        **Arguments**:
+
+        - `dropout_p`: Dropout probability. If a single `float`, the same dropout
+            probability will be applied to all hidden neurons. If a `Sequence[float]`,
+            the sequence must have length `num_neurons`, where `dropout_p[i]` is the
+            dropout probability for neuron `i`. Note that this allows dropout to be 
+            applied to input and output neurons as well.
+        """
+        if isinstance(dropout_p, float):
+            dropout_p = jnp.ones((self.num_neurons,)) * dropout_p
+            dropout_p = dropout_p.at[self.input_neurons].set(0.)
+            dropout_p = dropout_p.at[self.output_neurons].set(0.)
+        else:
+            assert jnp.size(dropout_p) == self.num_neurons
+            dropout_p = jnp.array(dropout_p, dtype=float)
+        assert jnp.all(jnp.greater_equal(dropout_p, 0))
+        assert jnp.all(jnp.less_equal(dropout_p, 1))
+        eqxe.set_state(self.dropout_p, dropout_p)
+
+
+    def to_networkx_graph(self) -> nx.DiGraph:
+        """NetworkX (https://networkx.org) is a popular Python library for network 
+        analysis. This function returns an instance of NetworkX's directed graph object 
+        `networkx.DiGraph` that represents the structure of the neural network. This may be 
+        useful for analyzing and/or debugging the connectivity structure of the network.
+
+        **Returns**:
+
+        A `networkx.DiGraph` object that represents the structure of the network, where
+        the neurons are nodes with the same numbering. 
+        
+        The nodes have the following field(s):
+
+        - `group`: One of {`'input'`, `'hidden'`, `'output'`} (a string).
+        - `bias`: The corresponding neuron's bias (a float).
+
+        The edges have the following field(s):
+
+        - `weight`: The corresponding network weight (a float).
+        """            
+        graph = nx.DiGraph()
+
+        for id in range(self.num_neurons):
+            if jnp.isin(id, self.input_neurons):
+                group = 'input'
+                bias = None
+            elif jnp.isin(id, self.output_neurons):
+                group = 'output'
+                bias = self.bias[self.topo_sort_inv[id] - self.num_input_neurons]
+            else:
+                group = 'hidden'
+                bias = self.bias[self.topo_sort_inv[id] - self.num_input_neurons]
+            graph.add_node(id, group=group, bias=bias)
+            
+        for (neuron, outputs) in self.adjacency_dict.items():
+            topo_batch_idx, pos_idx = self.neuron_to_topo_batch_idx[neuron]
+            for output in outputs:
+                col_idx = self.topo_sort_inv[output] - self.mins[topo_batch_idx]
+                assert self.masks[topo_batch_idx][pos_idx, col_idx]
+                weight = self.weights[topo_batch_idx][pos_idx, col_idx]
+                graph.add_edge(neuron, output, weight=weight)
+
+        return graph
+        
+
+    def _check_neurons(
         self,
         num_neurons: int, 
         adjacency_dict: Mapping[int, Sequence[int]],
@@ -297,6 +405,37 @@ class NeuralNetwork(Module):
                 assert len(set(outputs)) == len(outputs)
                 assert min(outputs) >= 0 and max(outputs) < num_neurons
 
+    
+    def _check_activations(
+        self,
+        hidden_activation: Callable, 
+        output_activation_elem: Callable,
+        output_activation_group: Callable,
+    ) -> None:
+        """
+        Check that all activations produce correctly-shaped output and
+        do not raise exceptions on correctly-shaped, finite-valued input.
+        """
+        x = jnp.zeros((1,))
+        try:
+            y = hidden_activation(x)
+        except Exception as e:
+            raise Exception(e)
+        assert jnp.array_equal(x.shape, y.shape)
+
+        try:
+            y = output_activation_elem(x)
+        except Exception as e:
+            raise Exception(e)
+        assert jnp.array_equal(x.shape, y.shape)
+
+        x = jnp.zeros_like(self.output_neurons)
+        try:
+            y = output_activation_group(x)
+        except Exception as e:
+            raise Exception(e)
+        assert jnp.array_equal(x.shape, y.shape)
+
 
     def _topological_batching(self) -> Sequence[np.array]:
         """
@@ -326,81 +465,14 @@ class NeuralNetwork(Module):
         return topo_batches
 
 
-    def get_dropout_p(self) -> Array:
-        """Get the per-neuron dropout probabilities.
-        
-        **Returns**:
-
-        A `jnp.array` with shape `(num_neurons,)` where element `i` 
-        is the dropout probability of neuron `i`.
+    def _dropout_key(self, key: Optional[jr.PRNGKey] = None):
         """
-        dropout_p = eqxe.get_state(
-            self.dropout_p, 
-            jnp.arange(self.num_neurons, dtype=float)
-        )
-        return dropout_p
-
-
-    def set_dropout_p(self, dropout_p: Union[float, Sequence[float]]) -> None:
-        """Set the per-neuron dropout probabilities.
-        
-        **Arguments**:
-
-        - `dropout_p`: Dropout probability. If a single `float`, the same dropout
-            probability will be applied to all hidden neurons. If a `Sequence[float]`,
-            the sequence must have length `num_neurons`, where `dropout_p[i]` is the
-            dropout probability for neuron `i`. Note that this allows dropout to be 
-            applied to input and output neurons as well.
+        If `key` is `None` get the random key contained in `self.key`, 
+        split the key, set `self.key` to contain the new key, and return 
+        the original key. Otherwise, return the key passed in.
         """
-        if isinstance(dropout_p, float):
-            dropout_p = jnp.ones((self.num_neurons,)) * dropout_p
-            dropout_p = dropout_p.at[self.input_neurons].set(0.)
-            dropout_p = dropout_p.at[self.output_neurons].set(0.)
-        else:
-            assert len(dropout_p) == self.num_neurons
-            dropout_p = jnp.array(dropout_p, dtype=float)
-        assert jnp.all(jnp.greater_equal(dropout_p, 0))
-        assert jnp.all(jnp.less_equal(dropout_p, 1))
-        eqxe.set_state(self.dropout_p, dropout_p)
-
-
-    def to_networkx_graph(self) -> nx.DiGraph:
-        """NetworkX (https://networkx.org) is a popular Python library for network 
-        analysis. This function returns an instance of NetworkX's directed graph object 
-        `networkx.DiGraph` that represents the structure of the neural network. This may be 
-        useful for analyzing and/or debugging the connectivity structure of the network.
-
-        **Returns**:
-
-        A `networkx.DiGraph` object that represents the structure of the network, where
-        the neurons are nodes with the same numbering. 
-        
-        The nodes have the following field(s):
-
-        - `group`: One of {`'input'`, `'hidden'`, `'output'`} (a string).
-        - `bias`: The corresponding neuron's bias (a float).
-
-        The edges have the following field(s):
-
-        - `weight`: The corresponding network weight (a float).
-        """            
-        graph = nx.DiGraph()
-
-        for id in range(self.num_neurons):
-            if jnp.isin(id, self.input_neurons):
-                group = 'input'
-                neuron_bias = None
-            elif jnp.isin(id, self.output_neurons):
-                group = 'output'
-                neuron_bias = self.parameter_matrix[id, -1] 
-            else:
-                group = 'hidden'
-                neuron_bias = self.parameter_matrix[id, -1] 
-            graph.add_node(id, group=group, bias=neuron_bias)
-            
-        for (neuron, outputs) in self.adjacency_dict.items():
-            for output in outputs:
-                weight = self.parameter_matrix[output, neuron]
-                graph.add_edge(neuron, output, weight=weight)
-
-        return graph
+        if key is None:
+            key = eqxe.get_state(self.key, jr.PRNGKey(0))
+            _, new_key = jr.split(key)
+            eqxe.set_state(self.key, new_key)
+        return key
