@@ -61,22 +61,21 @@ class NeuralNetwork(Module):
     ):
         """**Arguments**:
 
-        - `graph`: A `networkx.DiGraph` object that represents the DAG structure of
-            the neural network.
-        - `input_neurons`: A sequence of `Hashable` indicating the input neurons. 
-            The order here matters, as the input data will be passed into the input 
-            neurons in the order specified here.
-        - `output_neurons`: A sequence of `Hashable` indicating the output neurons. 
-            The order here matters, as the output data will be read from the output 
-            neurons in the order specified here.
-        - `hidden_activation`: The activation function applied element-wise to the 
-            hidden (i.e. non-input, non-output) neurons. It can itself be a 
-            trainable `equinox.Module`.
-        - `output_activation_elem`: The activation function applied element-wise to 
-            the  output neurons. It can itself be a trainable `equinox.Module`.
-        - `output_activation_group`: The activation function applied to the output 
-            neurons as a whole after applying `output_activation_elem` element-wise, 
-            e.g. `jax.nn.softmax`. It can itself be a trainable `equinox.Module`.
+        - `graph`: A `networkx.DiGraph` object that represents the DAG structure of the 
+            neural network.
+        - `input_neurons`: A sequence of nodes from `graph` indicating the input neurons. 
+            The order here matters, as the input data will be passed into the input neurons 
+            in the order specified here.
+        - `output_neurons`: A sequence of nodes from `graph` indicating the output neurons. 
+            The order here matters, as the output data will be read from the output neurons 
+            in the order specified here.
+        - `hidden_activation`: The activation function applied element-wise to the hidden 
+            (i.e. non-input, non-output) neurons. It can itself be a trainable `equinox.Module`.
+        - `output_activation_elem`: The activation function applied element-wise to the output 
+            neurons. It can itself be a trainable `equinox.Module`.
+        - `output_activation_group`: The activation function applied to the output neurons as 
+            a whole after applying `output_activation_elem` element-wise, e.g. `jax.nn.softmax`. 
+            It can itself be a trainable `equinox.Module`.
         - `dropout_p`: Dropout probability. If a single `float`, the same dropout
             probability will be applied to all hidden neurons. If a `Mapping[Hashable, float]`,
             `dropout_p[i]` refers to the dropout probability of neuron `i`. All neurons default 
