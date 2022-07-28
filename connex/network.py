@@ -17,11 +17,7 @@ from utils import _identity, _invert_dict
 
 
 class NeuralNetwork(Module):
-    """
-    A neural network whose structure is primarily specified by an adjecency dict
-    representing a directed acyclic graph (DAG) and sequences of ints specifying
-    which neurons are input and output neurons. Create your model by inheriting from
-    this.
+    """A neural network whose structure is specified by a DAG.
     """
     weights: Sequence[jnp.array]
     bias: jnp.array
