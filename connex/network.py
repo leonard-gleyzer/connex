@@ -219,7 +219,8 @@ class NeuralNetwork(Module):
         self.topo_sort = np.array(topo_sort_ids, dtype=int)
         self.num_neurons = len(topo_sort)
 
-        # Create adjacency dict and inverse dict.
+        # Create an adjacency dict that maps a neuron id to its output ids and  
+        # an inverse adjacency dict that maps a neuron id to its input ids.
         adjacency_dict = {}
         adjacency_dict_ = nx.to_dict_of_lists(graph)
         for (input, outputs) in adjacency_dict_.items():
@@ -229,9 +230,7 @@ class NeuralNetwork(Module):
 
         # Topological batching.
         # See Section 2.2 of https://arxiv.org/pdf/2101.07965.pdf.
-        topo_batches = []
-        topo_batch = []
-        neurons_to_remove = []
+        topo_batches, topo_batch, neurons_to_remove = [], [], []
         for neuron in topo_sort:
             if graph.in_degree(neuron) == 0:
                 topo_batch.append(neuron_to_id[neuron])
