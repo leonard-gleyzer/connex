@@ -164,7 +164,7 @@ class NeuralNetwork(Module):
         - `'group'`: One of {`'input'`, `'hidden'`, `'output'`} (a `str`).
         - `'bias'`: The corresponding neuron's bias (a `float`).
 
-        n addition to any field(s) the edges may already have, the edges 
+        In addition to any field(s) the edges may already have, the edges 
         now also have the following additional `str` field(s):
 
         - `weight`: The corresponding network weight (a `float`).
