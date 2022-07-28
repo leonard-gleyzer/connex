@@ -1,4 +1,4 @@
-from typing import Callable, Mapping, Optional, Sequence, Tuple, Union
+from typing import Callable, Hashable, Mapping, Optional, Sequence, Tuple, Union
 
 import equinox as eqx
 import equinox.experimental as eqxe
@@ -163,7 +163,8 @@ def remove_connections(
         hidden_activation,
         output_activation_elem,
         network.output_activation_group,
-        network.get_dropout_p()
+        network.get_dropout_p(),
+        key=network._dropout_key()
     )
 
     # Transfer relevant parameters from original network.
@@ -371,146 +372,9 @@ def remove_neurons(
     return network, id_map
 
 
-def connect_networks(
-    network1: NeuralNetwork,
-    network2: NeuralNetwork,
-    connection_map_1_to_2: Mapping[int, Sequence[int]] = {},
-    connection_map_2_to_1: Mapping[int, Sequence[int]] = {},
-    input_neurons: Optional[Tuple[Sequence[int], Sequence[int]]] = None,
-    output_neurons: Optional[Tuple[Sequence[int], Sequence[int]]] = None,
-    activation: Callable = jnn.silu,
-    output_activation_elem: Callable = _identity,
-    output_activation_group: Callable = _identity,
-    dropout_p: Optional[Union[float, Sequence[float]]] = None,
-    keep_parameters: bool = True,
-    *,
-    key: Optional[jr.PRNGKey] = None,
-) -> Tuple[NeuralNetwork, Mapping[int, int]]:
-    """Connect two networks together in a specified manner.
-    
-    **Arguments**:
-
-    - `network1`: A `NeuralNetwork` object.
-    - `network2`: A `NeuralNetwork` object.
-    - `connection_map_1_to_2` A dictionary that maps an `int` id representing the
-        corresponding neuron in `network1` to a sequence of `int` ids representing
-        the corresponding neurons in `network2` to which to connect the `network1` neuron.
-    - `connection_map_2_to_1` A dictionary that maps an `int` id representing the
-        corresponding neuron in `network2` to a sequence of int ids representing
-        the corresponding neurons in `network1` to which to connect the `network2` neuron.
-    - `input_neurons`: A 2-tuple of `int` sequences, where the first sequence is ids
-        of `network1` neurons and the second sequence is ids of `network2` neurons. The two 
-        sequences will be concatenated (and appropriately re-numbered) to form the
-        input neurons of the new network. Optional argument. If `None`, the input neurons
-        of the new network will be the concatenation of the input neurons of `network1`
-        and `network2`.
-    - `output_neurons`: A 2-tuple of `int` sequences, where the first sequence is ids
-        of `network1` neurons and the second sequence is ids of `network2` neurons. The two 
-        sequences will be concatenated (and appropriately re-numbered) to form the
-        output neurons of the new network. Optional argument. If `None`, the output neurons
-        of the new network will be the concatenation of the output neurons of `network1` 
-        and `network2`.
-    - `activation`: The activation function applied element-wise to the 
-        hidden (i.e. non-input, non-output) neurons. It can itself be a 
-        trainable `equinox.Module`.
-    - `output_activation`: The activation function applied element-wise to 
-        the  output neurons. It can itself be a trainable `equinox.Module`.
-    - `dropout_p`: Dropout probability. If a single `float`, the same dropout
-        probability will be applied to all hidden neurons. If a `Sequence[float]`,
-        the sequence must have length `num_neurons`, where `dropout_p[i]` is the
-        dropout probability for neuron `i`. Note that this allows dropout to be 
-        applied to input and output neurons as well. Optional argument. If `None`, 
-        defaults to the concatenation of `network1.get_dropout_p()` and 
-        `network2.get_dropout_p()`.
-    - `keep_parameters`: If `True`, copies the parameters of `network1` and `network2`
-        to the appropriate parameter entries of the new network.
-    - `key`: The `PRNGKey` used to initialize parameters. Optional, keyword-only argument. 
-        Defaults to `jax.random.PRNGKey(0)`.
-
-    **Returns**:
-
-    A 2-tuple where the first element is the new `NeuralNetwork`, and the second element is
-    A dictionary mapping neuron ids from `network2` to their respective ids in the new network. 
-    The `network1` ids are left unchanged.
-    """
-    # Set key. Done this way for nicer docs.
-    key = key if key is not None else jr.PRNGKey(0)
-
-    # Set input and output neurons.
-    if input_neurons is None:
-        input_neurons = [network1.input_neurons, network2.input_neurons]
-    input_neurons = jnp.append(
-        jnp.array(input_neurons[0]), 
-        jnp.array(input_neurons[1]) + network1.num_neurons
-    )
-
-    if output_neurons is None:
-        output_neurons = [network1.output_neurons, network2.output_neurons]
-    output_neurons = jnp.append(
-        jnp.array(output_neurons[0]), 
-        jnp.array(output_neurons[1]) + network1.num_neurons
-    )
-
-    # Set adjacency matrix.
-    num_neurons = network1.num_neurons + network2.num_neurons
-    adjacency_matrix = jnp.zeros((num_neurons, num_neurons))
-    adjacency_matrix = adjacency_matrix \
-        .at[:network1.num_neurons, :network1.num_neurons] \
-        .set(network1.adjacency_matrix)
-    adjacency_matrix = adjacency_matrix \
-        .at[network1.num_neurons:, network1.num_neurons:] \
-        .set(network2.adjacency_matrix)   
-
-    for (from_neuron, to_neurons) in connection_map_1_to_2.items():
-        _to_neurons = jnp.array(to_neurons) + network1.num_neurons
-        adjacency_matrix = adjacency_matrix.at[from_neuron, _to_neurons].set(1)
-
-    for (from_neuron, to_neurons) in connection_map_2_to_1.items():
-        _from_neuron = from_neuron + network1.num_neurons
-        adjacency_matrix = adjacency_matrix.at[_from_neuron, to_neurons].set(1)
-
-    # Set dropout probabilities.
-    if dropout_p is None:
-        dropout_p = jnp.append(
-            network1.get_dropout_p(), 
-            network2.get_dropout_p()
-        )
-
-    # Initialize parameters iid ~ N(0, 0.01).
-    parameter_matrix = jr.normal(
-        key, (num_neurons, num_neurons + 1)
-    ) * 0.1
-
-    if keep_parameters:
-        # Copy parameters from input networks to corresponding neurons in new network.
-        parameter_matrix = parameter_matrix \
-            .at[:network1.num_neurons, :network1.num_neurons] \
-            .set(network1.parameter_matrix[:, :-1])
-        parameter_matrix = parameter_matrix \
-            .at[:network1.num_neurons, -1] \
-            .set(network1.parameter_matrix[:, -1])
-        parameter_matrix = parameter_matrix \
-            .at[network1.num_neurons:, network1.num_neurons:-1] \
-            .set(network2.parameter_matrix[:, :-1])
-        parameter_matrix = parameter_matrix \
-            .at[network1.num_neurons:, -1] \
-            .set(network2.parameter_matrix[:, -1])
-
-    num_neurons = network1.num_neurons + network2.num_neurons
-    adjacency_dict = _adjacency_matrix_to_dict(adjacency_matrix)
-    
-    network = NeuralNetwork(
-        num_neurons,
-        adjacency_dict,
-        input_neurons,
-        output_neurons,
-        activation,
-        output_activation_elem,
-        output_activation_group,
-        dropout_p,
-        key=key,
-        parameter_matrix=parameter_matrix
-    )
-
-    neuron_ids = jnp.arange(network2.num_neurons) + network1.num_neurons
-    return network, dict(enumerate(neuron_ids.tolist()))
+def contract_cluster(
+    network: NeuralNetwork, 
+    neurons: Sequence[Hashable], 
+    contract_fn: Callable = jnp.max,
+) -> NeuralNetwork:
+    pass
