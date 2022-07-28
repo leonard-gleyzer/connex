@@ -35,9 +35,3 @@ def _invert_dict(
         if n not in _dict_inv:
             _dict_inv[n] = []
     return _dict_inv
-
-
-def _nx_digraph_to_adjacency_dict(
-    graph: nx.DiGraph
-) -> Mapping[int, Sequence[int]]:
-    assert isinstance(graph, nx.DiGraph)

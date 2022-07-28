@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Callable, Hashable, Mapping, Optional, Sequence, Tuple, Union
 
 import equinox.experimental as eqxe
@@ -12,7 +13,7 @@ import networkx as nx
 import numpy as np
 
 from custom_types import Array
-from utils import _identity, _invert_dict, _nx_digraph_to_adjacency_dict
+from utils import _identity, _invert_dict
 
 
 class NeuralNetwork(Module):
@@ -25,8 +26,8 @@ class NeuralNetwork(Module):
     weights: Sequence[jnp.array]
     bias: jnp.array
     hidden_activation: Callable
-    output_activation_elem: Callable
-    output_activation_group: Callable
+    output_activation: Callable
+    output_transform: Callable
     graph: nx.DiGraph = static_field()
     adjacency_dict: Mapping[int, Sequence[int]] = static_field()
     adjacency_dict_inv: Mapping[int, Sequence[int]] = static_field()
@@ -42,9 +43,9 @@ class NeuralNetwork(Module):
     output_neurons: jnp.array = static_field()
     num_neurons: int = static_field()
     num_input_neurons: int = static_field()
-    dropout_p: eqxe.StateIndex = static_field()
+    dropout_p: jnp.array = static_field()
     _hidden_activation: Callable = static_field()
-    _output_activation_elem: Callable = static_field()
+    _output_activation: Callable = static_field()
     key: eqxe.StateIndex = static_field()
 
     def __init__(
@@ -53,8 +54,8 @@ class NeuralNetwork(Module):
         input_neurons: Sequence[Hashable],
         output_neurons: Sequence[Hashable],
         hidden_activation: Callable = jnn.silu,
-        output_activation_elem: Callable = _identity,
-        output_activation_group: Callable = _identity,
+        output_activation: Callable = _identity,
+        output_transform: Callable = _identity,
         dropout_p: Union[float, Mapping[Hashable, float]] = 0.,
         *,
         key: Optional[jr.PRNGKey] = None,
@@ -71,11 +72,11 @@ class NeuralNetwork(Module):
             in the order specified here.
         - `hidden_activation`: The activation function applied element-wise to the hidden 
             (i.e. non-input, non-output) neurons. It can itself be a trainable `equinox.Module`.
-        - `output_activation_elem`: The activation function applied element-wise to the output 
+        - `output_activation`: The activation function applied element-wise to the output 
             neurons. It can itself be a trainable `equinox.Module`.
-        - `output_activation_group`: The activation function applied to the output neurons as 
-            a whole after applying `output_activation_elem` element-wise, e.g. `jax.nn.softmax`. 
-            It can itself be a trainable `equinox.Module`.
+        - `output_transform`: The transformation applied to the output neurons as a whole after 
+            applying `output_activation` element-wise, e.g. `jax.nn.softmax`. It can itself be a 
+            trainable `equinox.Module`.
         - `dropout_p`: Dropout probability. If a single `float`, the same dropout
             probability will be applied to all hidden neurons. If a `Mapping[Hashable, float]`,
             `dropout_p[i]` refers to the dropout probability of neuron `i`. All neurons default 
@@ -85,11 +86,9 @@ class NeuralNetwork(Module):
             Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
         """
         super().__init__()
-        self._set_topo_info(graph)
-        self.adjacency_dict = _nx_digraph_to_adjacency_dict(graph)
-        self.adjacency_dict_inv = _invert_dict(self.adjacency_dict)
+        self._set_topological_info(graph)
         self._set_input_output_neurons(input_neurons, output_neurons)
-        self._set_activations(hidden_activation, output_activation_elem, output_activation_group)
+        self._set_activations(hidden_activation, output_activation, output_transform)
         self._set_dropout_p(dropout_p)
         self._set_parameters(key)
 
@@ -133,7 +132,7 @@ class NeuralNetwork(Module):
             affine = jnp.expand_dims(affine, 0)
             output = lax.cond(
                 jnp.isin(id, self.output_neurons),
-                lambda: self.output_activation_elem(affine),
+                lambda: self.output_activation(affine),
                 lambda: self.hidden_activation(affine)
             )
             return jnp.squeeze(output)
@@ -149,7 +148,7 @@ class NeuralNetwork(Module):
 
         # Return values pertaining to output neurons, with the group-wise 
         # output activation applied.
-        return self.output_activation_group(values[self.output_neurons])
+        return self.output_transform(values[self.output_neurons])
 
 
     def to_networkx_graph(self) -> nx.DiGraph:
@@ -158,48 +157,60 @@ class NeuralNetwork(Module):
 
         **Returns**:
 
-        A `networkx.DiGraph` object that represents the network.
-        The nodes have the following `str` field(s):
+        A `networkx.DiGraph` object that represents the network. The original graph
+        used to initialize the network is left unchanged.
+
+        In addition to any field(s) the nodes may already have, the nodes 
+        now also have the following additional `str` field(s):
 
         - `'id'`: The neuron's position in the topological sort (an `int`)
         - `'group'`: One of {`'input'`, `'hidden'`, `'output'`} (a `str`).
         - `'bias'`: The corresponding neuron's bias (a `float`).
 
-        The edges have the following field(s):
+        n addition to any field(s) the edges may already have, the edges 
+        now also have the following additional `str` field(s):
 
         - `weight`: The corresponding network weight (a `float`).
         """            
-        graph = self.graph.copy()
+        graph = deepcopy(self.graph)
 
         node_attrs = {}
+        node_attrs_ = dict(graph.nodes(data=True))
         for (neuron, id) in self.neuron_to_id.items():
             if jnp.isin(id, self.input_neurons):
-                node_attrs[neuron] = {'id': id, 'group': 'input', 'bias': None}
+                node_attrs[neuron] = {
+                    'id': id, 'group': 'input', 'bias': None, **node_attrs_[neuron]
+                }
             elif jnp.isin(id, self.output_neurons):
                 bias = self.bias[id - self.num_input_neurons]
-                node_attrs[neuron] = {'id': id, 'group': 'output', 'bias': bias}
+                node_attrs[neuron] = {
+                    'id': id, 'group': 'output', 'bias': bias, **node_attrs_[neuron]
+                }
             else:
                 bias = self.bias[id - self.num_input_neurons]
-                node_attrs[neuron] = {'id': id, 'group': 'hidden', 'bias': bias}
+                node_attrs[neuron] = {
+                    'id': id, 'group': 'hidden', 'bias': bias, **node_attrs_[neuron]
+                }
         nx.set_node_attributes(graph, node_attrs)
             
         edge_attrs = {}
+        edge_attrs_ = {(i, o): data for (i, o, data) in graph.edges(data=True)}
         for (neuron, outputs) in self.adjacency_dict.items():
             topo_batch_idx, pos_idx = self.neuron_to_topo_batch_idx[neuron]
             for output in outputs:
                 col_idx = output - self.mins[topo_batch_idx]
                 assert self.masks[topo_batch_idx][pos_idx, col_idx]
                 weight = self.weights[topo_batch_idx][pos_idx, col_idx]
-                edge_attrs[(neuron, output)] = {'weight': weight}
+                edge_attrs[(neuron, output)] = {
+                    'weight': weight, **edge_attrs_[(neuron, output)]
+                }
         nx.set_edge_attributes(graph, edge_attrs)
 
         return graph
 
 
-    def _set_topo_info(self, graph: nx.DiGraph) -> None:
-        """Assign a unique `int` id to each neuron such that the neuron ids are 
-        contiguous, and return the adjacency dict reflecting the internal ids along
-        with a dict mapping each neuron to its id.
+    def _set_topological_info(self, graph: nx.DiGraph) -> None:
+        """Set the topological information and relevant attributes.
         """
         assert isinstance(graph, nx.DiGraph)
         assert nx.is_directed_acyclic_graph(graph)
@@ -210,6 +221,14 @@ class NeuralNetwork(Module):
         topo_sort_ids = [neuron_to_id[neuron] for neuron in topo_sort]
         self.topo_sort = np.array(topo_sort_ids, dtype=int)
         self.num_neurons = len(topo_sort)
+
+        # Create adjacency dict and inverse dict.
+        adjacency_dict = {}
+        adjacency_dict_ = nx.to_dict_of_lists(graph)
+        for (input, outputs) in adjacency_dict_.items():
+            adjacency_dict[neuron_to_id[input]] = [neuron_to_id[o] for o in outputs]
+        self.adjacency_dict = adjacency_dict
+        self.adjacency_dict_inv = _invert_dict(adjacency_dict)
 
         # Topological batching.
         # See Section 2.2 of https://arxiv.org/pdf/2101.07965.pdf.
@@ -244,11 +263,13 @@ class NeuralNetwork(Module):
 
     def _set_input_output_neurons(
         self,
-        input_neurons: Sequence[int],
-        output_neurons: Sequence[int],
+        input_neurons: Sequence[Hashable],
+        output_neurons: Sequence[Hashable],
     ) -> None:
-        """Check to make sure the input neurons and output neurons are valid.
+        """Set the input and output neurons.
         """
+        assert isinstance(input_neurons, Sequence)
+        assert isinstance(output_neurons, Sequence)
         input_neurons = [self.neuron_to_id[n] for n in input_neurons]
         output_neurons = [self.neuron_to_id[n] for n in output_neurons]
 
@@ -274,20 +295,18 @@ class NeuralNetwork(Module):
     def _set_activations(
         self,
         hidden_activation: Callable, 
-        output_activation_elem: Callable,
-        output_activation_group: Callable,
+        output_activation: Callable,
+        output_transform: Callable,
     ) -> None:
-        """Check that all activations produce correctly-shaped output and
-        do not raise exceptions on correctly-shaped, zero-valued input, and
-        set the activations of `self`.
+        """Set the activation functions.
         """
         # Activations may themselves be `eqx.Module`s, so we do this to ensure
         # that both `Module` and non-`Module` activations work with the same
         # input shape.
         hidden_activation_ = hidden_activation \
             if isinstance(hidden_activation, Module) else vmap(hidden_activation)
-        output_activation_elem_ = output_activation_elem \
-            if isinstance(output_activation_elem, Module) else vmap(output_activation_elem)
+        output_activation_ = output_activation \
+            if isinstance(output_activation, Module) else vmap(output_activation)
 
         x = jnp.zeros((1,))
         try:
@@ -297,24 +316,25 @@ class NeuralNetwork(Module):
         assert jnp.array_equal(x.shape, y.shape)
 
         try:
-            y = output_activation_elem_(x)
+            y = output_activation_(x)
         except Exception as e:
             raise e
         assert jnp.array_equal(x.shape, y.shape)
 
         x = jnp.zeros_like(self.output_neurons)
         try:
-            y = output_activation_group(x)
+            y = output_transform(x)
         except Exception as e:
             raise e
         assert jnp.array_equal(x.shape, y.shape)
 
         self.hidden_activation = hidden_activation_
-        self.output_activation_elem = output_activation_elem_
-        self.output_activation_group = output_activation_group
+        self.output_activation = output_activation_
+        self.output_transform = output_transform
+        
         # Done for plasticity functionality.
         self._hidden_activation = hidden_activation
-        self._output_activation_elem = output_activation_elem
+        self._output_activation = output_activation
 
 
     def _set_dropout_p(self, dropout_p: Union[float, Mapping[Hashable, float]]) -> None:
