@@ -413,9 +413,9 @@ class NeuralNetwork(Module):
             masks.append(jnp.array(mask, dtype=int))
         self.masks = masks
 
-        # Here, `self.idxs[i]` includes the indices -- in topological order -- of the 
-        # neurons needed to process `self.topo_batches[i]`. This is done for the same
-        # memory/parallelism reason as the structure of `self.weights`.
+        # Here, `self.idxs[i]` includes the indices of the neurons needed to process 
+        # `self.topo_batches[i]`. This is done for the same memory/parallelism reason 
+        # as the structure of `self.weights`.
         self.idxs = [
             jnp.arange(mins[i], maxs[i] + 1, dtype=int) for i in range(self.num_topo_batches)
         ]
