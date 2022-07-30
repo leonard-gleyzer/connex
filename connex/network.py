@@ -32,10 +32,10 @@ class NeuralNetwork(Module):
     topo_batches: Sequence[jnp.array] = static_field()
     neuron_to_topo_batch_idx: Sequence[Tuple[int, int]] = static_field()
     topo_sort: np.array = static_field()
-    mins: np.array = static_field()
-    maxs: np.array = static_field()
+    min_indices: np.array = static_field()
+    max_indices: np.array = static_field()
     masks: Sequence[jnp.array] = static_field()
-    idxs: Sequence[jnp.array] = static_field()
+    indices: Sequence[jnp.array] = static_field()
     input_neurons: jnp.array = static_field()
     output_neurons: jnp.array = static_field()
     num_neurons: int = static_field()
@@ -135,7 +135,7 @@ class NeuralNetwork(Module):
             return jnp.squeeze(output)
 
         # Forward pass in topological batch order.
-        for (tb, weights, mask, idx) in zip(self.topo_batches, self.weights, self.masks, self.idxs):
+        for (tb, weights, mask, idx) in zip(self.topo_batches, self.weights, self.masks, self.indices):
             # Affine transformation, wx + b.
             affine = (weights * mask) @ values[idx] + self.biases[tb - self.num_input_neurons]
             # Apply activations/dropout.
@@ -354,20 +354,20 @@ class NeuralNetwork(Module):
     def _set_parameters(self, key: Optional[jr.PRNGKey]) -> None:
         """Set the network parameters and relevent topological/indexing information.
         """
-        # Here, `mins[i]` (`maxs[i]`) is the index representing the minimum
+        # Here, `min_indices[i]` (`max_indices[i]`) is the index representing the minimum
         # (maximum) topological index of those neurons strictly necessary to 
         # process `self.topo_batches[i]` from the previous topological batch. 
         # If `i == 0`, the previous topological batch is the input neurons.
-        mins = np.array([])
-        maxs = np.array([])
+        min_indices = np.array([])
+        max_indices = np.array([])
         for tb in self.topo_batches:
             input_locs = [self.adjacency_dict_inv[int(i)] for i in tb]
-            mins_ = np.array([np.amin(locs) for locs in input_locs])
-            maxs_ = np.array([np.amax(locs) for locs in input_locs])
-            mins = np.append(mins, np.amin(mins_))
-            maxs = np.append(maxs, np.amax(maxs_))
-        self.mins = mins.astype(int)
-        self.maxs = maxs.astype(int)
+            mins = np.array([np.amin(locs) for locs in input_locs])
+            maxs = np.array([np.amax(locs) for locs in input_locs])
+            min_indices = np.append(min_indices, np.amin(mins))
+            max_indices = np.append(max_indices, np.amax(maxs))
+        self.min_indices = min_indices.astype(int)
+        self.max_indices = max_indices.astype(int)
 
         # Set the random key. We use eqxe.StateIndex here so that the key 
         # can be automatically updated after every forward pass. This ensures 
@@ -393,32 +393,29 @@ class NeuralNetwork(Module):
         # All parameters are drawn iid ~ N(0, 0.01).
         weight_lengths = np.array(maxs - mins, dtype=int) + 1
         self.weights = [
-            jr.normal(
-                wkeys[i], (jnp.size(self.topo_batches[i]), weight_lengths[i])
-            ) * 0.1
+            jr.normal(wkeys[i], (jnp.size(self.topo_batches[i]), weight_lengths[i])) * 0.1
             for i in range(self.num_topo_batches)
         ]
-        self.biases = jr.normal(
-            bkey, (self.num_neurons - self.num_input_neurons,)
-        ) * 0.1
+        self.biases = jr.normal(bkey, (self.num_neurons - self.num_input_neurons,)) * 0.1
 
         # Here, `self.masks` is a list of 2D binary `jnp.array` with identical structure
         # to `self.weights`. These are multiplied by the weights during the forward pass
         # to mask out weights for connections that are not present in the actual network.
         masks = []
-        for (tb, weights, min_) in zip(self.topo_batches, self.weights, self.mins):
+        for (tb, weights, min_idx) in zip(self.topo_batches, self.weights, self.min_indices):
             mask = np.zeros_like(weights)
             for (i, neuron) in enumerate(tb):
                 inputs = jnp.array(self.adjacency_dict_inv[int(neuron)], dtype=int)
-                mask[i, inputs - int(min_)] = 1
+                mask[i, inputs - min_idx] = 1
             masks.append(jnp.array(mask, dtype=int))
         self.masks = masks
 
-        # Here, `self.idxs[i]` includes the indices of the neurons needed to process 
+        # Here, `self.indices[i]` includes the indices of the neurons needed to process 
         # `self.topo_batches[i]`. This is done for the same memory/parallelism reason 
         # as the structure of `self.weights`.
-        self.idxs = [
-            jnp.arange(mins[i], maxs[i] + 1, dtype=int) for i in range(self.num_topo_batches)
+        self.indices = [
+            jnp.arange(min_indices[i], max_indices[i] + 1, dtype=int) 
+            for i in range(self.num_topo_batches)
         ]
 
 
