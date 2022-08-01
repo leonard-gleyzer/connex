@@ -25,6 +25,8 @@ class NeuralNetwork(Module):
     hidden_activation: Callable
     output_activation: Callable
     output_transform: Callable
+    gain: jnp.array
+    amplification: jnp.array
     graph: nx.DiGraph = static_field()
     adjacency_dict: Mapping[int, Sequence[int]] = static_field()
     adjacency_dict_inv: Mapping[int, Sequence[int]] = static_field()
@@ -40,7 +42,11 @@ class NeuralNetwork(Module):
     output_neurons: jnp.array = static_field()
     num_neurons: int = static_field()
     num_input_neurons: int = static_field()
+    num_inputs_per_neuron: jnp.array = static_field()
     dropout_p: jnp.array = static_field()
+    use_self_attention: bool = static_field()
+    use_neuron_norm: bool = static_field()
+    use_learnable_activation_params: bool = static_field()
     _hidden_activation: Callable = static_field()
     _output_activation: Callable = static_field()
     key: eqxe.StateIndex = static_field()
@@ -54,6 +60,9 @@ class NeuralNetwork(Module):
         output_activation: Callable = _identity,
         output_transform: Callable = _identity,
         dropout_p: Union[float, Mapping[Hashable, float]] = 0.,
+        use_self_attention: bool = False,
+        use_neuron_norm: bool = False,
+        use_learnable_activation_params = False,
         *,
         key: Optional[jr.PRNGKey] = None,
     ):
@@ -79,6 +88,9 @@ class NeuralNetwork(Module):
             `dropout_p[i]` refers to the dropout probability of neuron `i`. All neurons default 
             to zero unless otherwise specified. Note that this allows dropout to be applied to 
             input and output neurons as well.
+        - `use_self_attention`: TODO
+        - `use_neuron_norm`: TODO
+        - `use_learnable_activation_params`: TODO
         - `key`: The `jax.random.PRNGKey` used for parameter initialization and dropout. 
             Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
         """
@@ -88,6 +100,9 @@ class NeuralNetwork(Module):
         self._set_activations(hidden_activation, output_activation, output_transform)
         self._set_dropout_p(dropout_p)
         self._set_parameters(key)
+        self.use_self_attention = bool(use_self_attention)
+        self.use_neuron_norm = bool(use_neuron_norm)
+        self.use_learnable_activation_params = bool(use_learnable_activation_params)
 
 
     @filter_jit
@@ -124,20 +139,55 @@ class NeuralNetwork(Module):
         # Set input values.
         values = values.at[self.input_neurons].set(x * dropout_keep[self.input_neurons])
 
-        # Function to apply the activation for a single neuron.
+        # Function for a single neuron to apply self-attention to its inputs.
+        def _apply_self_attention(id: int, mask: jnp.array, vals: jnp.array) -> jnp.array:
+            vals = vals * mask
+            scaled_outer_product = jnp.outer(vals, vals) * lax.rsqrt(self.num_inputs_per_neuron[id])
+            attention_mask = jnp.nan_to_num(
+                (1. - jnp.outer(mask, mask)) * -jnp.inf, neginf=-jnp.inf
+            ) + 1
+            attention_weights = jnn.softmax(scaled_outer_product * attention_mask)
+            return attention_weights @ vals
+
+        # Neuron norm.
+        def _apply_neuron_norm(
+            id: int, mask: jnp.array, vals: jnp.array, eps: float = 1e-5
+        ) -> jnp.array:
+            num_inputs = self.num_inputs_per_neuron[id]
+            masked_vals = vals * mask
+            mean = jnp.sum(masked_vals) / num_inputs
+            var = jnp.sum(masked_vals * vals) / num_inputs - mean ** 2
+            rsqrt = lax.rsqrt(var + eps)
+            return (vals - mean) * rsqrt
+
+        # Function for a single neuron to apply its activation.
         def _apply_activation(id: int, affine: jnp.array) -> jnp.array:
-            affine = jnp.expand_dims(affine, 0)
+            gain, amplification = lax.cond(
+                self.use_learnable_activation_params,
+                lambda: self.gain[id - self.num_input_neurons], \
+                        self.amplification[id - self.num_input_neurons],
+                lambda: 1., 1.
+            )
+            affine_with_gain = jnp.expand_dims(affine * gain, 0)
             output = lax.cond(
                 jnp.isin(id, self.output_neurons),
-                lambda: self.output_activation(affine),
-                lambda: self.hidden_activation(affine)
+                lambda: self.output_activation(affine_with_gain),
+                lambda: self.hidden_activation(affine_with_gain)
             )
-            return jnp.squeeze(output)
+            return jnp.squeeze(output) * amplification
 
         # Forward pass in topological batch order.
         for (tb, weights, mask, idx) in zip(self.topo_batches, self.weights, self.masks, self.indices):
+            # Previous neuron values strictly necessary to process the current topological batch.
+            vals = values[idx]
+            # Neuron-level self-attention.
+            if self.use_self_attention:
+                vals = vmap(_apply_self_attention, in_axes=[0, 0, None])(tb, mask, vals)
+            # "Neuron Norm": basically like Layer Norm for each neuron individually.
+            if self.use_neuron_norm:
+                vals = vmap(_apply_neuron_norm, in_axes=[0, 0, None])(tb, mask, vals)
             # Affine transformation, wx + b.
-            affine = (weights * mask) @ values[idx] + self.biases[tb - self.num_input_neurons]
+            affine = (weights * mask) @ vals + self.biases[tb - self.num_input_neurons]
             # Apply activations/dropout.
             output_values = vmap(_apply_activation)(tb, affine) * dropout_keep[tb]
             # Set new values.
@@ -227,6 +277,9 @@ class NeuralNetwork(Module):
             adjacency_dict[neuron_to_id[input]] = [neuron_to_id[o] for o in outputs]
         self.adjacency_dict = adjacency_dict
         self.adjacency_dict_inv = _invert_dict(adjacency_dict)
+        self.num_inputs_per_neuron = jnp.array(
+            [len(self.adjacency_dict_inv[i]) for i in range(self.num_neurons)]
+        )
 
         # Topological batching.
         # See Section 2.2 of https://arxiv.org/pdf/2101.07965.pdf.
@@ -377,7 +430,7 @@ class NeuralNetwork(Module):
         key = jr.PRNGKey(0) if key is None else key
         assert isinstance(key, jr.PRNGKey)
         self.key = eqxe.StateIndex()
-        *wkeys, bkey, dkey = jr.split(key, self.num_topo_batches + 2)
+        *wkeys, bkey, dkey, gkey, akey = jr.split(key, self.num_topo_batches + 4)
         eqxe.set_state(self.key, dkey)
 
         # Set the network parameters. Here, `self.biases` is a `jnp.array` of shape 
@@ -417,6 +470,10 @@ class NeuralNetwork(Module):
             jnp.arange(min_index[i], max_index[i] + 1, dtype=int) 
             for i in range(self.num_topo_batches)
         ]
+
+        # Gain and amplification. iid ~ N(1, 0.01).
+        self.gain = jr.normal(gkey, (self.num_neurons - self.num_input_neurons,)) * 0.1 + 1
+        self.amplification = jr.normal(akey, (self.num_neurons - self.num_input_neurons,)) * 0.1 + 1
 
 
     def _keygen(self) -> jr.PRNGKey:
