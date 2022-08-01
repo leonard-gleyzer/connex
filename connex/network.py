@@ -25,8 +25,9 @@ class NeuralNetwork(Module):
     hidden_activation: Callable
     output_activation: Callable
     output_transform: Callable
-    gain: jnp.array
-    amplification: jnp.array
+    attention_params: Sequence[jnp.array]
+    gain: Optional[jnp.array]
+    amplification: Optional[jnp.array]
     graph: nx.DiGraph = static_field()
     adjacency_dict: Mapping[int, Sequence[int]] = static_field()
     adjacency_dict_inv: Mapping[int, Sequence[int]] = static_field()
@@ -99,11 +100,8 @@ class NeuralNetwork(Module):
         self._set_input_output_neurons(input_neurons, output_neurons)
         self._set_activations(hidden_activation, output_activation, output_transform)
         self._set_dropout_p(dropout_p)
-        self._set_parameters(key)
-        self.use_self_attention = bool(use_self_attention)
+        self._set_parameters(key, use_self_attention, use_learnable_activation_params)
         self.use_neuron_norm = bool(use_neuron_norm)
-        self.use_learnable_activation_params = bool(use_learnable_activation_params)
-
 
     @filter_jit
     def __call__(
@@ -140,14 +138,23 @@ class NeuralNetwork(Module):
         values = values.at[self.input_neurons].set(x * dropout_keep[self.input_neurons])
 
         # Function for a single neuron to apply self-attention to its inputs.
-        def _apply_self_attention(id: int, mask: jnp.array, vals: jnp.array) -> jnp.array:
-            vals = vals * mask
-            scaled_outer_product = jnp.outer(vals, vals) * lax.rsqrt(self.num_inputs_per_neuron[id])
-            attention_mask = jnp.nan_to_num(
-                (1. - jnp.outer(mask, mask)) * -jnp.inf, neginf=-jnp.inf
-            ) + 1
-            attention_weights = jnn.softmax(scaled_outer_product * attention_mask)
-            return attention_weights @ vals
+        def _apply_self_attention(
+            id: int, mask: jnp.array, vals: jnp.array, attn_params: jnp.array
+        ) -> jnp.array:
+            query_params, key_params, value_params = attn_params
+            query_weight, query_bias = query_params[:, :-1], query_params[:, -1]
+            key_weight, key_bias = key_params[:, :-1], key_params[:, -1]
+            value_weight, value_bias = value_params[:, :-1], value_params[:, -1]
+            query = query_weight @ vals + query_bias
+            key = key_weight @ vals + key_bias
+            value = value_weight @ vals + value_bias
+            scaled_outer_product = jnp.outer(query, key) * \
+                lax.rsqrt(self.num_inputs_per_neuron[id])
+            scaled_outer_product_masked = jnp.where(
+                1 - jnp.outer(mask, mask), -jnp.inf, scaled_outer_product
+            )
+            attention_weights = jnn.softmax(scaled_outer_product_masked)
+            return attention_weights @ value
 
         # Neuron norm.
         def _apply_neuron_norm(
@@ -156,9 +163,8 @@ class NeuralNetwork(Module):
             num_inputs = self.num_inputs_per_neuron[id]
             masked_vals = vals * mask
             mean = jnp.sum(masked_vals) / num_inputs
-            var = jnp.sum(masked_vals * vals) / num_inputs - mean ** 2
-            rsqrt = lax.rsqrt(var + eps)
-            return (vals - mean) * rsqrt
+            var = jnp.sum(masked_vals * vals) / num_inputs - jnp.square(mean)
+            return (vals - mean) * lax.rsqrt(var + eps)
 
         # Function for a single neuron to apply its activation.
         def _apply_activation(id: int, affine: jnp.array) -> jnp.array:
@@ -177,12 +183,14 @@ class NeuralNetwork(Module):
             return jnp.squeeze(output) * amplification
 
         # Forward pass in topological batch order.
-        for (tb, weights, mask, idx) in zip(self.topo_batches, self.weights, self.masks, self.indices):
+        for (tb, weights, mask, idx, attn_params) in zip(
+            self.topo_batches, self.weights, self.masks, self.indices, self.attention_params
+        ):
             # Previous neuron values strictly necessary to process the current topological batch.
             vals = values[idx]
             # Neuron-level self-attention.
             if self.use_self_attention:
-                vals = vmap(_apply_self_attention, in_axes=[0, 0, None])(tb, mask, vals)
+                vals = vmap(_apply_self_attention, in_axes=[0, 0, 0, None])(tb, mask, attn_params, vals)
             # "Neuron Norm": basically like Layer Norm for each neuron individually.
             if self.use_neuron_norm:
                 vals = vmap(_apply_neuron_norm, in_axes=[0, 0, None])(tb, mask, vals)
@@ -404,7 +412,12 @@ class NeuralNetwork(Module):
         self.dropout_p = dropout_p
 
 
-    def _set_parameters(self, key: Optional[jr.PRNGKey]) -> None:
+    def _set_parameters(
+        self, 
+        key: Optional[jr.PRNGKey], 
+        use_self_attention: bool,
+        use_learnable_activation_params: bool
+    ) -> None:
         """Set the network parameters and relevent topological/indexing information.
         """
         # Here, `min_index[i]` (`max_index[i]`) is the index representing the minimum
@@ -430,7 +443,7 @@ class NeuralNetwork(Module):
         key = jr.PRNGKey(0) if key is None else key
         assert isinstance(key, jr.PRNGKey)
         self.key = eqxe.StateIndex()
-        *wkeys, bkey, dkey, gkey, akey = jr.split(key, self.num_topo_batches + 4)
+        dkey, key = jr.split(key, 2)
         eqxe.set_state(self.key, dkey)
 
         # Set the network parameters. Here, `self.biases` is a `jnp.array` of shape 
@@ -444,12 +457,25 @@ class NeuralNetwork(Module):
         # the forward pass, since the minimum and maximum neurons needed to process a topological 
         # batch in parallel will be closest together when in topological order. 
         # All parameters are drawn iid ~ N(0, 0.01).
-        weight_lengths = np.array(maxs - mins, dtype=int) + 1
+        *wkeys, bkey, key = jr.split(key, self.num_topo_batches + 2)
+        topo_lengths = self.max_index - self.min_index + 1
         self.weights = [
-            jr.normal(wkeys[i], (jnp.size(self.topo_batches[i]), weight_lengths[i])) * 0.1
+            jr.normal(wkeys[i], (jnp.size(self.topo_batches[i]), topo_lengths[i])) * 0.1
             for i in range(self.num_topo_batches)
         ]
         self.biases = jr.normal(bkey, (self.num_neurons - self.num_input_neurons,)) * 0.1
+
+        # Attention params. TODO
+        self.use_self_attention = bool(use_self_attention)
+        if use_self_attention:
+            skey, key = jr.split(key, 2)
+            self.attention_params = [
+                jr.normal(
+                    skey, (jnp.size(self.topo_batches[i]), 3, topo_lengths[i], topo_lengths[i] + 1)
+                ) * 0.1 for i in range(self.num_topo_batches)
+            ]
+        else:
+            self.attention_params = [jnp.nan] * self.num_topo_batches
 
         # Here, `self.masks` is a list of 2D binary `jnp.array` with identical structure
         # to `self.weights`. These are multiplied by the weights during the forward pass
@@ -471,9 +497,15 @@ class NeuralNetwork(Module):
             for i in range(self.num_topo_batches)
         ]
 
-        # Gain and amplification. iid ~ N(1, 0.01).
-        self.gain = jr.normal(gkey, (self.num_neurons - self.num_input_neurons,)) * 0.1 + 1
-        self.amplification = jr.normal(akey, (self.num_neurons - self.num_input_neurons,)) * 0.1 + 1
+        # Gain and amplification. iid ~ N(1, 0.01). TODO
+        self.use_learnable_activation_params = bool(use_learnable_activation_params)
+        if use_learnable_activation_params:
+            gkey, akey = jr.split(key, 2)
+            self.gain = jr.normal(gkey, (self.num_neurons - self.num_input_neurons,)) * 0.1 + 1
+            self.amplification = jr.normal(akey, (self.num_neurons - self.num_input_neurons,)) * 0.1 + 1
+        else:
+            self.gain = None
+            self.amplification = None
 
 
     def _keygen(self) -> jr.PRNGKey:
