@@ -29,6 +29,7 @@ class NeuralNetwork(Module):
     attention_params: Sequence[jnp.array]
     gain: Optional[jnp.array]
     amplification: Optional[jnp.array]
+    offset: Optional[jnp.array]
     graph: nx.DiGraph = static_field()
     adjacency_dict: Mapping[int, Sequence[int]] = static_field()
     adjacency_dict_inv: Mapping[int, Sequence[int]] = static_field()
@@ -48,7 +49,7 @@ class NeuralNetwork(Module):
     dropout_p: jnp.array = static_field()
     use_self_attention: bool = static_field()
     use_neuron_norm: bool = static_field()
-    use_learnable_activation_params: bool = static_field()
+    use_adaptive_activations: bool = static_field()
     _hidden_activation: Callable = static_field()
     _output_activation: Callable = static_field()
     key: eqxe.StateIndex = static_field()
@@ -64,7 +65,7 @@ class NeuralNetwork(Module):
         dropout_p: Union[float, Mapping[Hashable, float]] = 0.,
         use_self_attention: bool = False,
         use_neuron_norm: bool = False,
-        use_learnable_activation_params = False,
+        use_adaptive_activations = False,
         *,
         key: Optional[jr.PRNGKey] = None,
     ):
@@ -92,7 +93,7 @@ class NeuralNetwork(Module):
             input and output neurons as well.
         - `use_self_attention`: TODO
         - `use_neuron_norm`: TODO
-        - `use_learnable_activation_params`: TODO
+        - `use_adaptive_activations`: TODO
         - `key`: The `jax.random.PRNGKey` used for parameter initialization and dropout. 
             Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
         """
@@ -101,7 +102,7 @@ class NeuralNetwork(Module):
         self._set_input_output_neurons(input_neurons, output_neurons)
         self._set_activations(hidden_activation, output_activation, output_transform)
         self._set_dropout_p(dropout_p)
-        self._set_parameters(key, use_self_attention, use_learnable_activation_params)
+        self._set_parameters(key, use_self_attention, use_adaptive_activations)
         self.use_neuron_norm = bool(use_neuron_norm)
 
     @filter_jit
@@ -138,51 +139,6 @@ class NeuralNetwork(Module):
         # Set input values.
         values = values.at[self.input_neurons].set(x * dropout_keep[self.input_neurons])
 
-        # Function for a single neuron to apply self-attention to its inputs.
-        def _apply_self_attention(
-            id: int, mask: jnp.array, vals: jnp.array, attn_params: jnp.array
-        ) -> jnp.array:
-            query_params, key_params, value_params = attn_params
-            query_weight, query_bias = query_params[:, :-1], query_params[:, -1]
-            key_weight, key_bias = key_params[:, :-1], key_params[:, -1]
-            value_weight, value_bias = value_params[:, :-1], value_params[:, -1]
-            query = query_weight @ vals + query_bias
-            key = key_weight @ vals + key_bias
-            value = value_weight @ vals + value_bias
-            scaled_outer_product = jnp.outer(query, key) * \
-                lax.rsqrt(self.num_inputs_per_neuron[id])
-            scaled_outer_product_masked = jnp.where(
-                1 - jnp.outer(mask, mask), -jnp.inf, scaled_outer_product
-            )
-            attention_weights = jnn.softmax(scaled_outer_product_masked)
-            return attention_weights @ value + vals
-
-        # Neuron norm.
-        def _apply_neuron_norm(
-            id: int, mask: jnp.array, vals: jnp.array, eps: float = 1e-5
-        ) -> jnp.array:
-            num_inputs = self.num_inputs_per_neuron[id]
-            masked_vals = vals * mask
-            mean = jnp.sum(masked_vals) / num_inputs
-            var = jnp.sum(masked_vals * vals) / num_inputs - jnp.square(mean)
-            return (vals - mean) * lax.rsqrt(var + eps)
-
-        # Function for a single neuron to apply its activation.
-        def _apply_activation(id: int, affine: jnp.array) -> jnp.array:
-            gain, amplification = lax.cond(
-                self.use_learnable_activation_params,
-                lambda: self.gain[id - self.num_input_neurons], \
-                        self.amplification[id - self.num_input_neurons],
-                lambda: 1., 1.
-            )
-            affine_with_gain = jnp.expand_dims(affine * gain, 0)
-            output = lax.cond(
-                jnp.isin(id, self.output_neurons),
-                lambda: self.output_activation(affine_with_gain),
-                lambda: self.hidden_activation(affine_with_gain)
-            )
-            return jnp.squeeze(output) * amplification
-
         # Forward pass in topological batch order.
         for (tb, weights, mask, idx, attn_params) in zip(
             self.topo_batches, self.weights, self.masks, self.indices, self.attention_params
@@ -191,14 +147,16 @@ class NeuralNetwork(Module):
             vals = values[idx]
             # Neuron-level self-attention.
             if self.use_self_attention:
-                vals = vmap(_apply_self_attention, in_axes=[0, 0, 0, None])(tb, mask, attn_params, vals)
+                _apply_self_attention = vmap(self._apply_self_attention, in_axes=[0, 0, 0, None])
+                vals = _apply_self_attention(tb, mask, attn_params, vals)
             # "Neuron Norm": basically like Layer Norm for each neuron individually.
             if self.use_neuron_norm:
-                vals = vmap(_apply_neuron_norm, in_axes=[0, 0, None])(tb, mask, vals)
+                _apply_neuron_norm = vmap(self._apply_neuron_norm, in_axes=[0, 0, None])
+                vals = _apply_neuron_norm(tb, mask, vals)
             # Affine transformation, wx + b.
             affine = (weights * mask) @ vals + self.biases[tb - self.num_input_neurons]
             # Apply activations/dropout.
-            output_values = vmap(_apply_activation)(tb, affine) * dropout_keep[tb]
+            output_values = vmap(self._apply_activation)(tb, affine) * dropout_keep[tb]
             # Set new values.
             values = values.at[tb].set(output_values)
 
@@ -207,63 +165,75 @@ class NeuralNetwork(Module):
         return self.output_transform(values[self.output_neurons])
 
 
-    def to_networkx_graph(self) -> nx.DiGraph:
-        """Returns a `networkx.DiGraph` represention of the network with parameters
-        and other relevant information included as node/edge attributes.
+    ##############################################################################
+    ################ Methods used inside forward pass (__call__). ################
+    ##############################################################################
 
-        **Returns**:
+    def _apply_self_attention(
+        self, id: int, mask: jnp.array, vals: jnp.array, attn_params: jnp.array
+    ) -> jnp.array:
+        """Function for a single neuron to apply self-attention to its inputs.
+        """
+        query_params, key_params, value_params = attn_params
+        query_weight, query_bias = query_params[:, :-1], query_params[:, -1]
+        key_weight, key_bias = key_params[:, :-1], key_params[:, -1]
+        value_weight, value_bias = value_params[:, :-1], value_params[:, -1]
+        query = query_weight @ vals + query_bias
+        key = key_weight @ vals + key_bias
+        value = value_weight @ vals + value_bias
+        scaled_outer_product = jnp.outer(query, key) * \
+            lax.rsqrt(self.num_inputs_per_neuron[id])
+        scaled_outer_product_masked = jnp.where(
+            1 - jnp.outer(mask, mask), -jnp.inf, scaled_outer_product
+        )
+        attention_weights = jnn.softmax(scaled_outer_product_masked)
+        return attention_weights @ value + vals
 
-        A `networkx.DiGraph` object that represents the network. The original graph
-        used to initialize the network is left unchanged.
 
-        In addition to any field(s) the nodes may already have, the nodes 
-        now also have the following additional `str` field(s):
+    def _apply_neuron_norm(
+        self, id: int, mask: jnp.array, vals: jnp.array, eps: float = 1e-5
+    ) -> jnp.array:
+        """Neuron norm.
+        """
+        num_inputs = self.num_inputs_per_neuron[id]
+        masked_vals = vals * mask
+        mean = jnp.sum(masked_vals) / num_inputs
+        var = jnp.sum(masked_vals * vals) / num_inputs - jnp.square(mean)
+        return (vals - mean) * lax.rsqrt(var + eps)
 
-        - `'id'`: The neuron's position in the topological sort (an `int`)
-        - `'group'`: One of {`'input'`, `'hidden'`, `'output'`} (a `str`).
-        - `'bias'`: The corresponding neuron's bias (a `float`).
 
-        In addition to any field(s) the edges may already have, the edges 
-        now also have the following additional `str` field(s):
+    def _apply_activation(self, id: int, affine: jnp.array) -> jnp.array:
+        """Function for a single neuron to apply its activation.
+        """
+        idx = id - self.num_input_neurons
+        gain, amplification, offset = lax.cond(
+            self.use_adaptive_activations,
+            lambda: (self.gain[idx], self.amplification[idx], self.offset[idx]),
+            lambda: (1., 1., 0.)
+        )
+        affine_with_gain = jnp.expand_dims(affine * gain, 0)
+        output = lax.cond(
+            jnp.isin(id, self.output_neurons),
+            lambda: self.output_activation(affine_with_gain),
+            lambda: self.hidden_activation(affine_with_gain)
+        )
+        return jnp.squeeze(output) * amplification + offset
 
-        - `weight`: The corresponding network weight (a `float`).
-        """            
-        graph = deepcopy(self.graph)
 
-        node_attrs = {}
-        node_attrs_ = dict(graph.nodes(data=True))
-        for (neuron, id) in self.neuron_to_id.items():
-            if jnp.isin(id, self.input_neurons):
-                node_attrs[neuron] = {
-                    'id': id, 'group': 'input', 'bias': None, **node_attrs_[neuron]
-                }
-            elif jnp.isin(id, self.output_neurons):
-                bias = self.biases[id - self.num_input_neurons]
-                node_attrs[neuron] = {
-                    'id': id, 'group': 'output', 'bias': bias, **node_attrs_[neuron]
-                }
-            else:
-                bias = self.biases[id - self.num_input_neurons]
-                node_attrs[neuron] = {
-                    'id': id, 'group': 'hidden', 'bias': bias, **node_attrs_[neuron]
-                }
-        nx.set_node_attributes(graph, node_attrs)
-            
-        edge_attrs = {}
-        edge_attrs_ = {(i, o): data for (i, o, data) in graph.edges(data=True)}
-        for (neuron, outputs) in self.adjacency_dict.items():
-            topo_batch_idx, pos_idx = self.neuron_to_topo_batch_idx[neuron]
-            for output in outputs:
-                col_idx = output - self.min_index[topo_batch_idx]
-                assert self.masks[topo_batch_idx][pos_idx, col_idx]
-                weight = self.weights[topo_batch_idx][pos_idx, col_idx]
-                edge_attrs[(neuron, output)] = {
-                    'weight': weight, **edge_attrs_[(neuron, output)]
-                }
-        nx.set_edge_attributes(graph, edge_attrs)
+    def _keygen(self) -> jr.PRNGKey:
+        """Get the random key contained in `self.key` (an `eqxe.StateIndex`), 
+        split the key, set `self.key` to contain the new key, and return the 
+        original key.
+        """
+        key = eqxe.get_state(self.key, jr.PRNGKey(0))
+        _, new_key = jr.split(key)
+        eqxe.set_state(self.key, new_key)
+        return key
 
-        return graph
 
+    ###########################################################################
+    ################ Methods used to set network attributes. ##################
+    ###########################################################################
 
     def _set_topological_info(self, graph: nx.DiGraph) -> None:
         """Set the topological information and relevant attributes.
@@ -412,7 +382,7 @@ class NeuralNetwork(Module):
         self, 
         key: Optional[jr.PRNGKey], 
         use_self_attention: bool,
-        use_learnable_activation_params: bool
+        use_adaptive_activations: bool
     ) -> None:
         """Set the network parameters and relevent topological/indexing information.
         """
@@ -493,23 +463,76 @@ class NeuralNetwork(Module):
             for i in range(self.num_topo_batches)
         ]
 
-        # Gain and amplification. iid ~ N(1, 0.01). TODO
-        self.use_learnable_activation_params = bool(use_learnable_activation_params)
-        if use_learnable_activation_params:
-            gkey, akey = jr.split(key, 2)
+        # Gain, amplification, offset iid ~ N(1, 0.01), N(1, 0.01), N(0, 0.01). TODO
+        self.use_adaptive_activations = bool(use_adaptive_activations)
+        if use_adaptive_activations:
+            gkey, akey, okey = jr.split(key, 3)
             self.gain = jr.normal(gkey, (self.num_neurons - self.num_input_neurons,)) * 0.1 + 1
             self.amplification = jr.normal(akey, (self.num_neurons - self.num_input_neurons,)) * 0.1 + 1
+            self.offset = jr.normal(okey, (self.num_neurons - self.num_input_neurons,)) * 0.1
         else:
             self.gain = None
             self.amplification = None
+            self.offset = None
 
 
-    def _keygen(self) -> jr.PRNGKey:
-        """Get the random key contained in `self.key` (an `eqxe.StateIndex`), 
-        split the key, set `self.key` to contain the new key, and return the 
-        original key.
-        """
-        key = eqxe.get_state(self.key, jr.PRNGKey(0))
-        _, new_key = jr.split(key)
-        eqxe.set_state(self.key, new_key)
-        return key
+    ###################################################
+    ################ Public methods. ##################
+    ###################################################
+
+    def to_networkx_graph(self) -> nx.DiGraph:
+        """Returns a `networkx.DiGraph` represention of the network with parameters
+        and other relevant information included as node/edge attributes.
+
+        **Returns**:
+
+        A `networkx.DiGraph` object that represents the network. The original graph
+        used to initialize the network is left unchanged.
+
+        In addition to any field(s) the nodes may already have, the nodes 
+        now also have the following additional `str` field(s):
+
+        - `'id'`: The neuron's position in the topological sort (an `int`)
+        - `'group'`: One of {`'input'`, `'hidden'`, `'output'`} (a `str`).
+        - `'bias'`: The corresponding neuron's bias (a `float`).
+
+        In addition to any field(s) the edges may already have, the edges 
+        now also have the following additional `str` field(s):
+
+        - `weight`: The corresponding network weight (a `float`).
+        """            
+        graph = deepcopy(self.graph)
+
+        node_attrs = {}
+        node_attrs_ = dict(graph.nodes(data=True))
+        for (neuron, id) in self.neuron_to_id.items():
+            if jnp.isin(id, self.input_neurons):
+                node_attrs[neuron] = {
+                    'id': id, 'group': 'input', 'bias': None, **node_attrs_[neuron]
+                }
+            elif jnp.isin(id, self.output_neurons):
+                bias = self.biases[id - self.num_input_neurons]
+                node_attrs[neuron] = {
+                    'id': id, 'group': 'output', 'bias': bias, **node_attrs_[neuron]
+                }
+            else:
+                bias = self.biases[id - self.num_input_neurons]
+                node_attrs[neuron] = {
+                    'id': id, 'group': 'hidden', 'bias': bias, **node_attrs_[neuron]
+                }
+        nx.set_node_attributes(graph, node_attrs)
+            
+        edge_attrs = {}
+        edge_attrs_ = {(i, o): data for (i, o, data) in graph.edges(data=True)}
+        for (neuron, outputs) in self.adjacency_dict.items():
+            topo_batch_idx, pos_idx = self.neuron_to_topo_batch_idx[neuron]
+            for output in outputs:
+                col_idx = output - self.min_index[topo_batch_idx]
+                assert self.masks[topo_batch_idx][pos_idx, col_idx]
+                weight = self.weights[topo_batch_idx][pos_idx, col_idx]
+                edge_attrs[(neuron, output)] = {
+                    'weight': weight, **edge_attrs_[(neuron, output)]
+                }
+        nx.set_edge_attributes(graph, edge_attrs)
+
+        return graph
