@@ -17,7 +17,8 @@ from utils import _identity, _invert_dict
 
 
 class NeuralNetwork(Module):
-    """A neural network whose structure is specified by a DAG.
+    """
+    A neural network whose structure is specified by a DAG.
     Create your model by inheriting from this.
     """
     weights: Sequence[jnp.array]
