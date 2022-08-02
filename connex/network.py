@@ -154,7 +154,7 @@ class NeuralNetwork(Module):
                 1 - jnp.outer(mask, mask), -jnp.inf, scaled_outer_product
             )
             attention_weights = jnn.softmax(scaled_outer_product_masked)
-            return attention_weights @ value
+            return attention_weights @ value + vals
 
         # Neuron norm.
         def _apply_neuron_norm(
@@ -329,21 +329,16 @@ class NeuralNetwork(Module):
         assert isinstance(output_neurons, Sequence)
         input_neurons = [self.neuron_to_id[n] for n in input_neurons]
         output_neurons = [self.neuron_to_id[n] for n in output_neurons]
-
         # Check that the input and output neurons are both non-empty.
         assert input_neurons and output_neurons
-
         # Check that the input and output neurons are disjoint.
         assert not (set(input_neurons) & set(output_neurons))
-
         # Check that input neurons themselves have no inputs.
         for neuron in input_neurons:
             assert not self.adjacency_dict_inv[neuron]
-
         # Check that output neurons themselves have no outputs.
         for neuron in output_neurons:
             assert not self.adjacency_dict[neuron]
-
         self.num_input_neurons = len(input_neurons)
         self.input_neurons = jnp.array(input_neurons, dtype=int)
         self.output_neurons = jnp.array(output_neurons, dtype=int)
