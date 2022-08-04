@@ -1,3 +1,4 @@
+import sys
 from copy import deepcopy
 from typing import Callable, Hashable, Mapping, Optional, Sequence, Tuple, Union
 
@@ -12,10 +13,8 @@ from jax import lax, vmap
 import networkx as nx
 import numpy as np
 
-import sys
-
-from .custom_types import Array
-from .utils import _identity, _invert_dict
+from custom_types import Array
+from utils import _identity, _invert_dict
 
 
 class NeuralNetwork(Module):
@@ -33,7 +32,6 @@ class NeuralNetwork(Module):
     beta: Optional[jnp.array]
     gain: Optional[jnp.array]
     amplification: Optional[jnp.array]
-    offset: Optional[jnp.array]
     graph: nx.DiGraph = static_field()
     adjacency_dict: Mapping[int, Sequence[int]] = static_field()
     adjacency_dict_inv: Mapping[int, Sequence[int]] = static_field()
@@ -140,56 +138,6 @@ class NeuralNetwork(Module):
         The result array from the forward pass. The order of the array elements will be
         the order of the output neurons passed in during initialization.
         """
-
-        # Function for a single neuron to apply self-attention to its inputs.
-        def _apply_self_attention(
-            id: jnp.array, 
-            vals: jnp.array,
-            attn_params: jnp.array,
-            attn_mask: jnp.array
-        ) -> jnp.array:
-            query_params, key_params, value_params = attn_params
-            query_weight, query_bias = query_params[:, :-1], query_params[:, -1]
-            key_weight, key_bias = key_params[:, :-1], key_params[:, -1]
-            value_weight, value_bias = value_params[:, :-1], value_params[:, -1]
-            query = query_weight @ vals + query_bias
-            key = key_weight @ vals + key_bias
-            value = value_weight @ vals + value_bias
-            rsqrt = lax.rsqrt(self.num_inputs_per_neuron[id])
-            scaled_outer_product = jnp.outer(query, key) * rsqrt
-            attention_weights = jnn.softmax(scaled_outer_product - attn_mask)
-            return attention_weights @ value + vals
-
-        # "Neuron Norm" -- Like Layer Norm but for each neuron individually.
-        def _apply_neuron_norm(
-            id: int, mask: jnp.array, vals: jnp.array, eps: float = 1e-5
-        ) -> jnp.array:
-            num_inputs = self.num_inputs_per_neuron[id]
-            masked_vals = vals * mask
-            mean = jnp.sum(masked_vals) / num_inputs
-            # Var[X] = E[X^2] - E[X]^2
-            var = jnp.sum(masked_vals * vals) / num_inputs - jnp.square(mean)
-            normalized = (vals - mean) * lax.rsqrt(var + eps)
-            idx = id - self.num_input_neurons
-            gamma, beta = self.gamma[idx], self.beta[idx]
-            return gamma * normalized + beta
-
-        # Function for a single neuron to apply its activation.
-        def _apply_activation(id: int, affine: jnp.array) -> jnp.array:
-            idx = id - self.num_input_neurons
-            gain, amplification, offset = lax.cond(
-                self.use_adaptive_activations,
-                lambda: (self.gain[idx], self.amplification[idx], self.offset[idx]),
-                lambda: (1., 1., 0.)
-            )
-            affine_with_gain = jnp.expand_dims(affine * gain, 0)
-            output = lax.cond(
-                jnp.isin(id, self.output_neurons),
-                lambda: self.output_activation(affine_with_gain),
-                lambda: self.hidden_activation(affine_with_gain)
-            )
-            return jnp.squeeze(output) * amplification + offset
-
         # Neuron value array, updated as neurons are "fired".
         values = jnp.zeros((self.num_neurons,))
 
@@ -214,22 +162,83 @@ class NeuralNetwork(Module):
             vals = values[indices]
             # Neuron-level self-attention.
             if self.use_self_attention:
-                apply_self_attention = vmap(_apply_self_attention, in_axes=[0, 0, 0, None])
-                vals = apply_self_attention(tb, vals, attn_params, attn_mask)
+                apply_self_attention = vmap(self._apply_self_attention, in_axes=[0, 0, 0, None])
+                vals = apply_self_attention(tb, attn_params, attn_mask, vals)
             # "Neuron Norm": basically like Layer Norm for each neuron individually.
             if self.use_neuron_norm:
-                apply_neuron_norm = vmap(_apply_neuron_norm, in_axes=[0, 0, None])
+                apply_neuron_norm = vmap(self._apply_neuron_norm, in_axes=[0, 0, None])
                 vals = apply_neuron_norm(tb, mask, vals)
             # Affine transformation, wx + b.
             affine = (weights * mask) @ vals + self.biases[tb - self.num_input_neurons]
             # Apply activations/dropout.
-            output_values = vmap(_apply_activation)(tb, affine) * dropout_keep[tb]
+            output_values = vmap(self._apply_activation)(tb, affine) * dropout_keep[tb]
             # Set new values.
             values = values.at[tb].set(output_values)
 
         # Return values pertaining to output neurons, with the group-wise 
         # output activation applied.
         return self.output_transform(values[self.output_neurons])
+
+
+    ##############################################################################
+    ################ Methods used inside forward pass (__call__). ################
+    ##############################################################################
+
+    def _apply_self_attention(
+        self,
+        id: jnp.array, 
+        attn_params: jnp.array,
+        attn_mask: jnp.array,
+        vals: jnp.array
+    ) -> jnp.array:
+        """Function for a single neuron to apply self-attention to its inputs,
+        followed by a skip connection.
+        """
+        query_params, key_params, value_params = attn_params
+        query_weight, query_bias = query_params[:, :-1], query_params[:, -1]
+        key_weight, key_bias = key_params[:, :-1], key_params[:, -1]
+        value_weight, value_bias = value_params[:, :-1], value_params[:, -1]
+        query = query_weight @ vals + query_bias
+        key = key_weight @ vals + key_bias
+        value = value_weight @ vals + value_bias
+        rsqrt = lax.rsqrt(self.num_inputs_per_neuron[id])
+        scaled_outer_product = jnp.outer(query, key) * rsqrt
+        attention_weights = jnn.softmax(scaled_outer_product - attn_mask)
+        return attention_weights @ value + vals
+
+
+    def _apply_neuron_norm(
+        self, id: jnp.array, mask: jnp.array, vals: jnp.array, eps: float = 1e-5
+    ) -> jnp.array:
+        """Neuron Norm -- like Layer Norm but for each neuron individually.
+        """
+        num_inputs = self.num_inputs_per_neuron[id]
+        masked_vals = vals * mask
+        mean = jnp.sum(masked_vals) / num_inputs
+        # Var[X] = E[X^2] - E[X]^2
+        var = jnp.sum(masked_vals * vals) / num_inputs - jnp.square(mean)
+        normalized = (vals - mean) * lax.rsqrt(var + eps)
+        idx = id - self.num_input_neurons
+        gamma, beta = self.gamma[idx], self.beta[idx]
+        return gamma * normalized + beta
+
+
+    def _apply_activation(self, id: jnp.array, affine: jnp.array) -> jnp.array:
+        """Function for a single neuron to apply its activation.
+        """
+        idx = id - self.num_input_neurons
+        gain, amplification = lax.cond(
+            self.use_adaptive_activations,
+            lambda: (self.gain[idx], self.amplification[idx]),
+            lambda: (1., 1.)
+        )
+        affine_with_gain = jnp.expand_dims(affine * gain, 0)
+        output = lax.cond(
+            jnp.isin(id, self.output_neurons),
+            lambda: self.output_activation(affine_with_gain),
+            lambda: self.hidden_activation(affine_with_gain)
+        )
+        return jnp.squeeze(output) * amplification
 
 
     def _keygen(self) -> jr.PRNGKey:
@@ -242,6 +251,10 @@ class NeuralNetwork(Module):
         eqxe.set_state(self.key, new_key)
         return key
 
+
+    ###########################################################################
+    ################ Methods used to set network attributes. ##################
+    ###########################################################################
         
     def _set_topological_info(self, graph: nx.DiGraph) -> None:
         """Set the topological information and relevant attributes.
@@ -284,7 +297,6 @@ class NeuralNetwork(Module):
         # The first topo batch is technically the input neurons, but we don't include
         # those here, since they are handled separately in the forward pass.
         self.topo_batches = [jnp.array(tb, dtype=int) for tb in topo_batches[1:]]
-
         self.num_topo_batches = len(self.topo_batches)
         self.neuron_to_id = neuron_to_id
 
@@ -461,17 +473,15 @@ class NeuralNetwork(Module):
             for i in range(self.num_topo_batches)
         ]
 
-        # Gain, amplification, offset iid ~ N(1, 0.01), N(1, 0.01), N(0, 0.01). TODO
+        # Gain, amplification iid ~ N(1, 0.01), N(1, 0.01)). TODO
         self.use_adaptive_activations = bool(use_adaptive_activations)
         if use_adaptive_activations:
-            gkey, akey, okey, key = jr.split(key, 4)
-            self.gain = jr.normal(gkey, (self.num_neurons - self.num_input_neurons,)) * 0.1 + 1
-            self.amplification = jr.normal(akey, (self.num_neurons - self.num_input_neurons,)) * 0.1 + 1
-            self.offset = jr.normal(okey, (self.num_neurons - self.num_input_neurons,)) * 0.1
+            gkey, akey, key = jr.split(key, 3)
+            self.gain = jr.normal(gkey, (num_non_input_neurons,)) * 0.1 + 1
+            self.amplification = jr.normal(akey, (num_non_input_neurons,)) * 0.1 + 1
         else:
             self.gain = None
             self.amplification = None
-            self.offset = None
 
         # Neuron norm.
         self.use_neuron_norm = bool(use_neuron_norm)
