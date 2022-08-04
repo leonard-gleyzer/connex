@@ -3,8 +3,7 @@ from .plasticity import (
     add_connections,
     remove_connections,
     add_neurons,
-    remove_neurons,
-    connect_networks
+    remove_neurons
 )
 
 from . import nn

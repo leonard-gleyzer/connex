@@ -4,6 +4,8 @@ import jax.numpy as jnp
 import jax.nn as jnn
 import jax.random as jr
 
+import networkx as nx
+
 from .. import NeuralNetwork
 from ..utils import _identity
 
@@ -19,8 +21,8 @@ class MLP(NeuralNetwork):
         width: int,
         depth: int,
         hidden_activation: Callable = jnn.silu,
-        output_activation_elem: Callable = _identity,
-        output_activation_group: Callable = _identity,
+        output_activation: Callable = _identity,
+        output_transform: Callable = _identity,
         *,
         key: Optional[jr.PRNGKey] = None,
         **kwargs,
@@ -35,7 +37,10 @@ class MLP(NeuralNetwork):
             hidden (i.e. non-input, non-output) neurons. It can itself be a 
             trainable equinox Module.
         - `output_activation`: The activation function applied element-wise to 
-            the  output neurons. It can itself be a trainable equinox Module.
+            the output neurons. It can itself be a trainable equinox Module.
+        - `output_transform`: The transformation applied to the output neurons as a whole after 
+            applying `output_activation` element-wise, e.g. `jax.nn.softmax`. It can itself be a 
+            trainable `equinox.Module`.
         - `key`: The `PRNGKey` used to initialize parameters. Optional, keyword-only 
             argument. Defaults to `jax.random.PRNGKey(0)`.
         """
@@ -54,15 +59,15 @@ class MLP(NeuralNetwork):
             for r in row_idx:
                 adjacency_dict[r] = list(col_idx)
             neuron += in_size
+        graph = nx.from_dict_of_lists(adjacency_dict)
 
         super().__init__(
-            num_neurons,
-            adjacency_dict,
+            graph,
             input_neurons,
             output_neurons,
             hidden_activation,
-            output_activation_elem,
-            output_activation_group,
+            output_activation,
+            output_transform,
             key=key,
             **kwargs
         )
