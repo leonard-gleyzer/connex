@@ -1,5 +1,5 @@
 from copy import deepcopy
-from typing import Callable, Hashable, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Mapping, Optional, Sequence, Tuple, Union
 
 import equinox.experimental as eqxe
 from equinox import Module, filter_jit, static_field
@@ -21,34 +21,34 @@ class NeuralNetwork(Module):
     A neural network whose structure is specified by a DAG.
     Create your model by inheriting from this.
     """
-    weights: Sequence[jnp.array]
-    biases: jnp.array
+    weights: Sequence[Array]
+    biases: Array
     hidden_activation: Callable
     output_activation: Callable
     output_transform: Callable
-    attention_params: Sequence[jnp.array]
-    gamma: Optional[jnp.array]
-    beta: Optional[jnp.array]
-    gain: Optional[jnp.array]
-    amplification: Optional[jnp.array]
+    attention_params: Sequence[Array]
+    gamma: Optional[Array]
+    beta: Optional[Array]
+    gain: Optional[Array]
+    amplification: Optional[Array]
     graph: nx.DiGraph = static_field()
     adjacency_dict: Mapping[int, Sequence[int]] = static_field()
     adjacency_dict_inv: Mapping[int, Sequence[int]] = static_field()
-    neuron_to_id: Mapping[Hashable, int] = static_field()
-    topo_batches: Sequence[jnp.array] = static_field()
+    neuron_to_id: Mapping[Any, int] = static_field()
+    topo_batches: Sequence[Array] = static_field()
     neuron_to_topo_batch_idx: Sequence[Tuple[int, int]] = static_field()
-    topo_sort: np.array = static_field()
-    min_index: np.array = static_field()
-    max_index: np.array = static_field()
-    masks: Sequence[jnp.array] = static_field()
-    attention_masks: Sequence[jnp.array] = static_field()
-    indices: Sequence[jnp.array] = static_field()
-    input_neurons: jnp.array = static_field()
-    output_neurons: jnp.array = static_field()
+    topo_sort: np.ndarray = static_field()
+    min_index: np.ndarray = static_field()
+    max_index: np.ndarray = static_field()
+    masks: Sequence[Array] = static_field()
+    attention_masks: Sequence[Array] = static_field()
+    indices: Sequence[Array] = static_field()
+    input_neurons: Array = static_field()
+    output_neurons: Array = static_field()
     num_neurons: int = static_field()
     num_input_neurons: int = static_field()
-    num_inputs_per_neuron: jnp.array = static_field()
-    dropout_p: jnp.array = static_field()
+    num_inputs_per_neuron: Array = static_field()
+    dropout_p: Array = static_field()
     use_self_attention: bool = static_field()
     use_neuron_norm: bool = static_field()
     use_adaptive_activations: bool = static_field()
@@ -59,12 +59,12 @@ class NeuralNetwork(Module):
     def __init__(
         self,
         graph: nx.DiGraph,
-        input_neurons: Sequence[Hashable],
-        output_neurons: Sequence[Hashable],
+        input_neurons: Sequence[Any],
+        output_neurons: Sequence[Any],
         hidden_activation: Callable = jnn.silu,
         output_activation: Callable = _identity,
         output_transform: Callable = _identity,
-        dropout_p: Union[float, Mapping[Hashable, float]] = 0.,
+        dropout_p: Union[float, Mapping[Any, float]] = 0.,
         use_self_attention: bool = False,
         use_neuron_norm: bool = False,
         use_adaptive_activations: bool = False,
@@ -89,7 +89,7 @@ class NeuralNetwork(Module):
             applying `output_activation` element-wise, e.g. `jax.nn.softmax`. It can itself be a 
             trainable `equinox.Module`.
         - `dropout_p`: Dropout probability. If a single `float`, the same dropout
-            probability will be applied to all hidden neurons. If a `Mapping[Hashable, float]`,
+            probability will be applied to all hidden neurons. If a `Mapping[Any, float]`,
             `dropout_p[i]` refers to the dropout probability of neuron `i`. All neurons default 
             to zero unless otherwise specified. Note that this allows dropout to be applied to 
             input and output neurons as well.
@@ -179,17 +179,13 @@ class NeuralNetwork(Module):
         return self.output_transform(values[self.output_neurons])
 
 
-    ##############################################################################
-    ################ Methods used inside forward pass (__call__). ################
-    ##############################################################################
+    ###############################################################################
+    ################ Methods used during forward pass in __call__. ################
+    ###############################################################################
 
     def _apply_self_attention(
-        self,
-        id: jnp.array, 
-        attn_params: jnp.array,
-        attn_mask: jnp.array,
-        vals: jnp.array
-    ) -> jnp.array:
+        self, id: int, attn_params: Array, attn_mask: Array, vals: Array
+    ) -> Array:
         """Function for a single neuron to apply self-attention to its inputs,
         followed by a skip connection.
         """
@@ -207,8 +203,8 @@ class NeuralNetwork(Module):
 
 
     def _apply_neuron_norm(
-        self, id: jnp.array, mask: jnp.array, vals: jnp.array, eps: float = 1e-5
-    ) -> jnp.array:
+        self, id: int, mask: Array, vals: Array, eps: float = 1e-5
+    ) -> Array:
         """Neuron Norm -- like Layer Norm but for each neuron individually.
         """
         num_inputs = self.num_inputs_per_neuron[id]
@@ -222,7 +218,7 @@ class NeuralNetwork(Module):
         return gamma * normalized + beta
 
 
-    def _apply_activation(self, id: jnp.array, affine: jnp.array) -> jnp.array:
+    def _apply_activation(self, id: int, affine: float) -> Array:
         """Function for a single neuron to apply its activation.
         """
         idx = id - self.num_input_neurons
@@ -251,9 +247,9 @@ class NeuralNetwork(Module):
         return key
 
 
-    ###########################################################################
-    ################ Methods used to set network attributes. ##################
-    ###########################################################################
+    #############################################################################
+    ############ Methods used to set network attributes in __init__. ############
+    #############################################################################
         
     def _set_topological_info(self, graph: nx.DiGraph) -> None:
         """Set the topological information and relevant attributes.
@@ -310,8 +306,8 @@ class NeuralNetwork(Module):
 
     def _set_input_output_neurons(
         self,
-        input_neurons: Sequence[Hashable],
-        output_neurons: Sequence[Hashable],
+        input_neurons: Sequence[Any],
+        output_neurons: Sequence[Any],
     ) -> None:
         """Set the input and output neurons.
         """
@@ -414,10 +410,10 @@ class NeuralNetwork(Module):
         dkey, key = jr.split(key, 2)
         eqxe.set_state(self.key, dkey)
 
-        # Set the network parameters. Here, `self.biases` is a `jnp.array` of shape 
+        # Set the network parameters. Here, `self.biases` is a `jnp.ndarray` of shape 
         # `(num_neurons - num_input_neurons,)`, where `self.biases[i]` is the bias of 
         # the neuron with topological index `i + self.num_input_neurons`, and `self.weights` 
-        # is a list of 2D `jnp.array`s, where `self.weights[i]` are the weights used by the 
+        # is a list of 2D `jnp.ndarray`s, where `self.weights[i]` are the weights used by the 
         # neurons in `self.topo_batches[i]`. More specifically, `self.weights[i][j, k]` is 
         # the weight of the connection from the neuron with topological index `k + mins[i]` 
         # to the neuron with index `self.topo_batches[i][j]`. The weights are stored this way 
@@ -458,7 +454,7 @@ class NeuralNetwork(Module):
             ]
             outer_product = vmap(lambda x: jnp.outer(x, x))
             self.attention_masks = [
-                jnp.where(outer_product(1 - mask), jnp.inf, 0) for mask in self.masks
+                jnp.where(outer_product(mask), 0, jnp.inf) for mask in self.masks
             ]
         else:
             self.attention_params = [jnp.nan] * self.num_topo_batches
@@ -493,7 +489,7 @@ class NeuralNetwork(Module):
             self.beta = None
 
 
-    def _set_dropout_p(self, dropout_p: Union[float, Mapping[Hashable, float]]) -> None:
+    def _set_dropout_p(self, dropout_p: Union[float, Mapping[Any, float]]) -> None:
         """Set the per-neuron dropout probabilities.
         """
         if isinstance(dropout_p, float):
