@@ -1,10 +1,10 @@
 from typing import Callable, Optional
 
-import jax.numpy as jnp
 import jax.nn as jnn
 import jax.random as jr
 
 import networkx as nx
+import numpy as np
 
 from .. import NeuralNetwork
 from ..utils import _identity
@@ -22,7 +22,6 @@ class MLP(NeuralNetwork):
         depth: int,
         hidden_activation: Callable = jnn.silu,
         output_activation: Callable = _identity,
-        output_transform: Callable = _identity,
         *,
         key: Optional[jr.PRNGKey] = None,
         **kwargs,
@@ -36,19 +35,16 @@ class MLP(NeuralNetwork):
         - `hidden_activation`: The activation function applied element-wise to the 
             hidden (i.e. non-input, non-output) neurons. It can itself be a 
             trainable equinox Module.
-        - `output_activation`: The activation function applied element-wise to 
-            the output neurons. It can itself be a trainable equinox Module.
-        - `output_transform`: The transformation applied to the output neurons as a whole after 
-            applying `output_activation` element-wise, e.g. `jax.nn.softmax`. It can itself be a 
-            trainable `equinox.Module`.
+        - `output_activation`: The activation function applied group-wise to the output 
+            neurons, e.g. `jax.nn.softmax`. It can itself be a trainable `equinox.Module`.
         - `key`: The `PRNGKey` used to initialize parameters. Optional, keyword-only 
             argument. Defaults to `jax.random.PRNGKey(0)`.
         """
         key = key if key is not None else jr.PRNGKey(0)
         num_neurons = width * depth + input_size + output_size
-        input_neurons = jnp.arange(input_size)
+        input_neurons = np.arange(input_size, dtype=int)
         output_neurons_start = num_neurons - output_size
-        output_neurons = jnp.arange(output_size) + output_neurons_start
+        output_neurons = np.arange(output_size, dtype=int) + output_neurons_start
         adjacency_dict = {}
         layer_sizes = [input_size] + ([width] * depth) + [output_size]
         neuron = 0
@@ -59,7 +55,7 @@ class MLP(NeuralNetwork):
             for r in row_idx:
                 adjacency_dict[r] = list(col_idx)
             neuron += in_size
-        graph = nx.from_dict_of_lists(adjacency_dict)
+        graph = nx.DiGraph(adjacency_dict)
 
         super().__init__(
             graph,
@@ -67,7 +63,6 @@ class MLP(NeuralNetwork):
             output_neurons,
             hidden_activation,
             output_activation,
-            output_transform,
             key=key,
             **kwargs
         )

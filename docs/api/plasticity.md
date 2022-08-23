@@ -8,4 +8,3 @@ We provide the following code functionality to mirror these processes. All leave
 ::: connex.remove_connections
 ::: connex.add_neurons
 ::: connex.remove_neurons
-::: connex.connect_networks

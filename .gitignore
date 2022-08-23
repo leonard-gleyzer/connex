@@ -1,0 +1,10 @@
+__pycache__
+*.egg-info
+.all_objects.cache
+.pytest_cache
+test.py
+scratch.py
+dist
+site
+build
+TODO
