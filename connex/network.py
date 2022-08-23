@@ -101,13 +101,13 @@ class NeuralNetwork(Module):
             Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
         """
         super().__init__(**kwargs)
-        print("\nCompiling network...")
+        print("Compiling network...")
         self._set_topological_info(graph)
         self._set_input_output_neurons(input_neurons, output_neurons)
         self._set_activations(hidden_activation, output_activation)
         self._set_parameters(key, use_self_attention, use_adaptive_activations)
         self._set_dropout_p(dropout_p)
-        print("Done!\n")
+        print("Done!")
 
 
     @filter_jit
