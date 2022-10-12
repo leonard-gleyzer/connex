@@ -1,5 +1,5 @@
 from copy import deepcopy
-from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import equinox.experimental as eqxe
 from equinox import Module, filter_jit, static_field
@@ -9,10 +9,11 @@ import jax.numpy as jnp
 import jax.random as jr
 from jax import lax, vmap
 
+from jaxtyping import Array
+
 import networkx as nx
 import numpy as np
 
-from .custom_types import Array
 from .utils import _identity, _invert_dict
 
 
@@ -55,8 +56,8 @@ class NeuralNetwork(Module):
     def __init__(
         self,
         graph: nx.DiGraph,
-        input_neurons: Iterable[Any],
-        output_neurons: Iterable[Any],
+        input_neurons: Sequence[Any],
+        output_neurons: Sequence[Any],
         hidden_activation: Callable = jnn.silu,
         output_activation: Callable = _identity,
         dropout_p: Union[float, Mapping[Any, float]] = 0.,
@@ -69,10 +70,10 @@ class NeuralNetwork(Module):
         """**Arguments**:
 
         - `graph`: A `networkx.DiGraph` representing the DAG structure of the neural network.
-        - `input_neurons`: An `Iterable` of nodes from `graph` indicating the input neurons. 
+        - `input_neurons`: An `Sequence` of nodes from `graph` indicating the input neurons. 
             The order here matters, as the input data will be passed into the input neurons 
             in the order specified here.
-        - `output_neurons`: An `Iterable` of nodes from `graph` indicating the output neurons. 
+        - `output_neurons`: An `Sequence` of nodes from `graph` indicating the output neurons. 
             The order here matters, as the output data will be read from the output neurons 
             in the order specified here.
         - `hidden_activation`: The activation function applied element-wise to the hidden 
@@ -84,11 +85,6 @@ class NeuralNetwork(Module):
             `dropout_p[i]` refers to the dropout probability of neuron `i`. All neurons default 
             to zero unless otherwise specified. Note that this allows dropout to be applied to 
             input and output neurons as well.
-        - `use_neuron_norm`: A `bool` indicating whether neurons should normalize their respective 
-            inputs before further processing, like a per-neuron [Layer Normalization](https://arxiv.org/abs/1607.06450), 
-            here referred to as "Neuron Norm". Each neuron first normalizes its inputs by scaling by 
-            the sample mean and variance, and then multiplies the result by a trainable per-neuron scalar 
-            `gamma` and adds a trainable per-neuron scalar `beta`.
         - `use_self_attention`: A `bool` indicating whether to apply neuron-wise self-attention, 
             where each neuron applies [self-attention](https://arxiv.org/abs/1706.03762) to its inputs. 
             If both `use_self_attention` and `use_neuron_norm` are `True`, normalization is applied 
@@ -277,13 +273,13 @@ class NeuralNetwork(Module):
 
     def _set_input_output_neurons(
         self,
-        input_neurons: Iterable[Any],
-        output_neurons: Iterable[Any],
+        input_neurons: Sequence[Any],
+        output_neurons: Sequence[Any],
     ) -> None:
         """Set the input and output neurons.
         """
-        assert isinstance(input_neurons, Iterable)
-        assert isinstance(output_neurons, Iterable)
+        assert isinstance(input_neurons, Sequence)
+        assert isinstance(output_neurons, Sequence)
         input_neurons = [self.neuron_to_id[n] for n in input_neurons]
         output_neurons = [self.neuron_to_id[n] for n in output_neurons]
         # Check that the input and output neurons are both non-empty.
