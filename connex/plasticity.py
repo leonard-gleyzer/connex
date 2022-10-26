@@ -1,4 +1,4 @@
-from typing import Callable, Hashable, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Hashable, Mapping, Optional, Sequence, Tuple, Union
 
 import equinox as eqx
 import equinox.experimental as eqxe
@@ -15,9 +15,9 @@ from .utils import _identity
 
 def add_connections(
     network: NeuralNetwork,
-    connections: Mapping[int, Sequence[int]],
-    input_neurons: Optional[Sequence[int]] = None,
-    output_neurons: Optional[Sequence[int]] = None,
+    connections: Mapping[Any, Sequence[Any]],
+    input_neurons: Optional[Sequence[Any]] = None,
+    output_neurons: Optional[Sequence[Any]] = None,
     *,
     key: Optional[jr.PRNGKey] = None
 ) -> NeuralNetwork:
@@ -26,14 +26,14 @@ def add_connections(
     **Arguments**:
 
     - `network`: A `NeuralNetwork` object.
-    - `connections`: An adjacency dict mapping an existing neuron id to
-        its new outgoing connections. Connections that already exist are
-        ignored.
-    - `input_neurons`: A sequence of `int` indicating the ids of the input 
+    - `connections`: An adjacency dict mapping an existing neuron (by its 
+        NetworkX id) to its new outgoing connections. Connections that already 
+        exist are ignored.
+    - `input_neurons`: A sequence indicating the ids of the input 
         neurons. The order here matters, as the input data is passed into 
         the input neurons in the order passed in here. Optional argument. 
         If `None`, the input neurons of the original network are retained.
-    - `output_neurons`: A sequence of `int` indicating the ids of the output 
+    - `output_neurons`: A sequence indicating the ids of the output 
         neurons. The order here matters, as the output values are read from 
         the output neurons in the order passed in here. Optional argument. 
         If `None`, the output neurons of the original network are retained.

@@ -26,7 +26,10 @@ class NeuralNetwork(Module):
     biases: Array
     hidden_activation: Callable
     output_activation: Callable
-    attention_params: List[Array]
+    gammas: Optional[Array]
+    betas: Optional[Array]
+    attention_params_topo: List[Array]
+    attention_params_neuron: List[Array]
     gain: Optional[Array]
     amplification: Optional[Array]
     graph: nx.DiGraph = static_field()
@@ -40,7 +43,7 @@ class NeuralNetwork(Module):
     min_index: np.ndarray = static_field()
     max_index: np.ndarray = static_field()
     masks: List[Array] = static_field()
-    attention_masks: List[Array] = static_field()
+    attention_masks_neuron: List[Array] = static_field()
     indices: List[Array] = static_field()
     input_neurons: Array = static_field()
     output_neurons: Array = static_field()
@@ -48,7 +51,9 @@ class NeuralNetwork(Module):
     num_input_neurons: int = static_field()
     num_inputs_per_neuron: Array = static_field()
     dropout_p: Array = static_field()
-    use_self_attention: bool = static_field()
+    use_topo_norm: bool = static_field()
+    use_topo_self_attention: bool = static_field()
+    use_neuron_self_attention: bool = static_field()
     use_adaptive_activations: bool = static_field()
     _hidden_activation: Callable = static_field()
     key: eqxe.StateIndex = static_field()
@@ -61,8 +66,10 @@ class NeuralNetwork(Module):
         hidden_activation: Callable = jnn.silu,
         output_activation: Callable = _identity,
         dropout_p: Union[float, Mapping[Any, float]] = 0.,
-        use_self_attention: bool = False,
-        use_adaptive_activations: bool = True,
+        use_topo_norm: bool = False,
+        use_topo_self_attention: bool = False,
+        use_neuron_self_attention: bool = False,
+        use_adaptive_activations: bool = False,
         *,
         key: Optional[jr.PRNGKey] = None,
         **kwargs
@@ -85,10 +92,16 @@ class NeuralNetwork(Module):
             `dropout_p[i]` refers to the dropout probability of neuron `i`. All neurons default 
             to zero unless otherwise specified. Note that this allows dropout to be applied to 
             input and output neurons as well.
-        - `use_self_attention`: A `bool` indicating whether to apply neuron-wise self-attention, 
+        - `use_topo_norm`: A `bool` indicating whether to apply a topo batch version of [Layer Norm](),
+            where the collective inputs of each topological batch are normalized, with learnable 
+            elementwise-affine parameters `gamma` and `beta`.
+        - `use_topo_self_attention`: A `bool` indicating whether to apply self-attention to each topological 
+            batch's collective inputs.
+        - `use_neuron_self_attention`: A `bool` indicating whether to apply neuron-wise self-attention, 
             where each neuron applies [self-attention](https://arxiv.org/abs/1706.03762) to its inputs. 
-            If both `use_self_attention` and `use_neuron_norm` are `True`, normalization is applied 
-            [before self-attention](https://arxiv.org/abs/2002.04745).
+            If both `use_neuron_self_attention` and `use_neuron_norm` are `True`, normalization is applied 
+            [before self-attention](https://arxiv.org/abs/2002.04745). Warning: this may cause significantly 
+            greater memory use.
         - `use_adaptive_activations`: A bool indicating whether to use neuron-wise 
             [adaptive activations](https://arxiv.org/abs/1909.12228). If `True`, activations 
             undergo `σ(x) -> a * σ(b * x)`, where `a`, `b` are trainable scalar parameters 
@@ -101,7 +114,13 @@ class NeuralNetwork(Module):
         self._set_topological_info(graph)
         self._set_input_output_neurons(input_neurons, output_neurons)
         self._set_activations(hidden_activation, output_activation)
-        self._set_parameters(key, use_self_attention, use_adaptive_activations)
+        self._set_parameters(
+            key, 
+            use_topo_norm, 
+            use_topo_self_attention, 
+            use_neuron_self_attention, 
+            use_adaptive_activations
+        )
         self._set_dropout_p(dropout_p)
         print("Done!")
 
@@ -141,19 +160,27 @@ class NeuralNetwork(Module):
         values = values.at[self.input_neurons].set(x * dropout_keep[self.input_neurons])
 
         # Forward pass in topological batch order.
-        for (tb, weights, mask, indices, attn_params, attn_mask) in zip(
+        for (tb, weights, mask, indices, gamma, beta, attn_params_t, attn_params_n, attn_mask_n) in zip(
             self.topo_batches, 
             self.weights, 
             self.masks,  
             self.indices,
-            self.attention_params,
-            self.attention_masks 
+            self.gammas,
+            self.betas,
+            self.attention_params_topo, 
+            self.attention_params_neuron,
+            self.attention_masks_neuron,
         ):
             # Previous neuron values strictly necessary to process the current topological batch.
-            vals = jnp.tile(values[indices], (jnp.size(tb), 1))
+            vals = values[indices]
+            # Topo-level self-attention
+            if self.use_topo_self_attention:
+                vals = self._apply_topo_self_attention(attn_params_t, vals)
             # Neuron-level self-attention.
-            if self.use_self_attention:
-                vals = vmap(self._apply_self_attention)(tb, attn_params, attn_mask, vals)
+            if self.use_neuron_self_attention:
+                # vals = jnp.tile(vals, (jnp.size(tb), 1))
+                _apply_neuron_self_attention = vmap(self._apply_neuron_self_attention, in_axes=[0, 0, 0, None])
+                vals = _apply_neuron_self_attention(tb, attn_params_n, attn_mask_n, vals)
             # Affine transformation, wx + b.
             affine = vmap(jnp.dot)(weights * mask, vals) + self.biases[tb - self.num_input_neurons]
             # Apply activations/dropout.
@@ -170,7 +197,38 @@ class NeuralNetwork(Module):
     ################ Methods used during forward pass in __call__. ################
     ###############################################################################
 
-    def _apply_self_attention(
+    def _apply_topo_norm(self, gamma: Array, beta: Array, vals: Array) -> Array:
+        """Function for a topo batch to standardize its inputs (unless the input array
+        has shape (1,), in which case it is left alone), followed by a learnable 
+        elementwise-affine transformation.
+        """
+        return lax.cond(
+            jnp.greater(jnp.size(vals), 1),
+            lambda: jnn.standardize(vals),
+            lambda: vals
+        ) * gamma + beta
+
+
+    def _apply_topo_self_attention(
+        self, attn_params: Array, vals: Array
+    ) -> Array:
+        """Function for a topo batch to apply self-attention to its collective inputs,
+        followed by a skip connection.
+        """
+        query_params, key_params, value_params = attn_params
+        query_weight, query_bias = query_params[:, :-1], query_params[:, -1]
+        key_weight, key_bias = key_params[:, :-1], key_params[:, -1]
+        value_weight, value_bias = value_params[:, :-1], value_params[:, -1]
+        query = query_weight @ vals + query_bias
+        key = key_weight @ vals + key_bias
+        value = value_weight @ vals + value_bias
+        rsqrt = lax.rsqrt(jnp.size(vals))
+        scaled_outer_product = jnp.outer(query, key) * rsqrt
+        attention_weights = jnn.softmax(scaled_outer_product)
+        return attention_weights @ value + vals
+
+
+    def _apply_neuron_self_attention(
         self, id: int, attn_params: Array, attn_mask: Array, vals: Array
     ) -> Array:
         """Function for a single neuron to apply self-attention to its inputs,
@@ -334,7 +392,9 @@ class NeuralNetwork(Module):
     def _set_parameters(
         self, 
         key: Optional[jr.PRNGKey], 
-        use_self_attention: bool,
+        use_topo_norm: bool,
+        use_topo_self_attention: bool,
+        use_neuron_self_attention: bool,
         use_adaptive_activations: bool
     ) -> None:
         """Set the network parameters and relevent topological/indexing information.
@@ -396,21 +456,48 @@ class NeuralNetwork(Module):
             masks.append(jnp.array(mask, dtype=int))
         self.masks = masks
 
-        # Set parameters and masks for self-attention.
-        self.use_self_attention = bool(use_self_attention)
-        if use_self_attention:
-            skey, key = jr.split(key, 2)
-            self.attention_params = [
+        # Set parameters for TopoNorm
+        self.use_topo_norm = bool(use_topo_norm)
+        *gkeys, key = jr.split(key, self.num_topo_batches + 1)
+        *bkeys, key = jr.split(key, self.num_topo_batches + 1)
+        if use_topo_norm:
+            self.gammas = [
+                jr.normal(gkeys[i], (topo_lengths[i],)) * 0.1 + 1 for i in range(self.num_topo_batches)
+            ]
+            self.betas = [
+                jr.normal(bkeys[i], (topo_lengths[i],)) * 0.1 for i in range(self.num_topo_batches)
+            ]
+        else:
+            self.gammas = [jnp.nan] * self.num_topo_batches
+            self.betas = [jnp.nan] * self.num_topo_batches
+
+        # Set parameters and masks for neuron-wise self-attention.
+        self.use_neuron_self_attention = bool(use_neuron_self_attention)
+        if use_neuron_self_attention:
+            *akeys, key = jr.split(key, self.num_topo_batches + 1)
+            self.attention_params_neuron = [
                 jr.normal(
-                    skey, (jnp.size(self.topo_batches[i]), 3, topo_lengths[i], topo_lengths[i] + 1)
+                    akeys[i], (jnp.size(self.topo_batches[i]), 3, topo_lengths[i], topo_lengths[i] + 1)
                 ) * 0.1 for i in range(self.num_topo_batches)
             ]
             outer_product = vmap(lambda x: jnp.outer(x, x))
             mask_fn = filter_jit(lambda m: jnp.where(outer_product(m), 0, jnp.inf))
-            self.attention_masks = [mask_fn(mask) for mask in self.masks]
+            self.attention_masks_neuron = [mask_fn(mask) for mask in self.masks]
         else:
-            self.attention_params = [jnp.nan] * self.num_topo_batches
-            self.attention_masks = [jnp.nan] * self.num_topo_batches
+            self.attention_params_neuron = [jnp.nan] * self.num_topo_batches
+            self.attention_masks_neuron = [jnp.nan] * self.num_topo_batches
+
+        # Set parameters and masks for topo-wise self-attention.
+        self.use_topo_self_attention = bool(use_topo_self_attention)
+        if use_topo_self_attention:
+            *akeys, key = jr.split(key, self.num_topo_batches + 1)
+            self.attention_params_topo = [
+                jr.normal(
+                    akeys[i], (3, topo_lengths[i], topo_lengths[i] + 1)
+                ) * 0.1 for i in range(self.num_topo_batches)
+            ]
+        else:
+            self.attention_params_topo = [jnp.nan] * self.num_topo_batches
 
         # Here, `self.indices[i]` includes the indices of the neurons needed to process 
         # `self.topo_batches[i]`. This is done for the same memory/parallelism reason 
