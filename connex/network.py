@@ -173,6 +173,9 @@ class NeuralNetwork(Module):
         ):
             # Previous neuron values strictly necessary to process the current topological batch.
             vals = values[indices]
+            # Topo Norm
+            if self.use_topo_norm:
+                vals = self._apply_topo_norm(gamma, beta, vals)
             # Topo-level self-attention
             if self.use_topo_self_attention:
                 vals = self._apply_topo_self_attention(attn_params_t, vals)
@@ -204,9 +207,9 @@ class NeuralNetwork(Module):
         """
         return lax.cond(
             jnp.greater(jnp.size(vals), 1),
-            lambda: jnn.standardize(vals),
+            lambda: jnn.standardize(vals) * gamma + beta,
             lambda: vals
-        ) * gamma + beta
+        )
 
 
     def _apply_topo_self_attention(
