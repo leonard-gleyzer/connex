@@ -70,6 +70,7 @@ class NeuralNetwork(Module):
         use_topo_self_attention: bool = False,
         use_neuron_self_attention: bool = False,
         use_adaptive_activations: bool = False,
+        topo_sort: Optional[Sequence[Any]] = None,
         *,
         key: Optional[jr.PRNGKey] = None,
         **kwargs
@@ -106,12 +107,14 @@ class NeuralNetwork(Module):
             [adaptive activations](https://arxiv.org/abs/1909.12228). If `True`, activations 
             undergo `σ(x) -> a * σ(b * x)`, where `a`, `b` are trainable scalar parameters 
             unique to each neuron.
+        - `topo_sort`: An optional sequence of neurons indicating a topological sort of the graph. If `None`,
+            the topological sort will be done via NetworkX, which may be time-consuming for large networks.
         - `key`: The `jax.random.PRNGKey` used for parameter initialization and dropout. 
             Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
         """
         super().__init__(**kwargs)
         print("Compiling network...")
-        self._set_topological_info(graph)
+        self._set_topological_info(graph, topo_sort)
         self._set_input_output_neurons(input_neurons, output_neurons)
         self._set_activations(hidden_activation, output_activation)
         self._set_parameters(
@@ -173,10 +176,10 @@ class NeuralNetwork(Module):
         ):
             # Previous neuron values strictly necessary to process the current topological batch.
             vals = values[indices]
-            # Topo Norm
+            # Topo Norm.
             if self.use_topo_norm:
                 vals = self._apply_topo_norm(gamma, beta, vals)
-            # Topo-level self-attention
+            # Topo-level self-attention.
             if self.use_topo_self_attention:
                 vals = self._apply_topo_self_attention(attn_params_t, vals)
             # Neuron-level self-attention.
@@ -283,10 +286,20 @@ class NeuralNetwork(Module):
     ############ Methods used to set network attributes in __init__. ############
     #############################################################################
         
-    def _set_topological_info(self, graph: nx.DiGraph) -> None:
+    def _set_topological_info(
+        self, graph: nx.DiGraph, topo_sort: Optional[Sequence[Any]]
+    ) -> None:
         """Set the topological information and relevant attributes.
         """
-        topo_sort = list(nx.lexicographical_topological_sort(graph))
+        if topo_sort is None:
+            topo_sort = list(nx.lexicographical_topological_sort(graph))
+        else:
+            graph_copy = nx.DiGraph(graph)
+            assert nx.is_directed_acyclic_graph(graph_copy)
+            # Check that the provided topological sort is valid.
+            for neuron in topo_sort:
+                assert graph_copy.in_degree(neuron) == 0
+                graph_copy.remove_node(neuron)
         self.graph = graph
         # Map a neuron to its `int` id, which is its position in the topological sort.
         neuron_to_id = {neuron: id for (id, neuron) in enumerate(topo_sort)}
@@ -474,6 +487,18 @@ class NeuralNetwork(Module):
             self.gammas = [jnp.nan] * self.num_topo_batches
             self.betas = [jnp.nan] * self.num_topo_batches
 
+        # Set parameters and masks for topo-wise self-attention.
+        self.use_topo_self_attention = bool(use_topo_self_attention)
+        if use_topo_self_attention:
+            *akeys, key = jr.split(key, self.num_topo_batches + 1)
+            self.attention_params_topo = [
+                jr.normal(
+                    akeys[i], (3, topo_lengths[i], topo_lengths[i] + 1)
+                ) * 0.1 for i in range(self.num_topo_batches)
+            ]
+        else:
+            self.attention_params_topo = [jnp.nan] * self.num_topo_batches
+
         # Set parameters and masks for neuron-wise self-attention.
         self.use_neuron_self_attention = bool(use_neuron_self_attention)
         if use_neuron_self_attention:
@@ -489,18 +514,6 @@ class NeuralNetwork(Module):
         else:
             self.attention_params_neuron = [jnp.nan] * self.num_topo_batches
             self.attention_masks_neuron = [jnp.nan] * self.num_topo_batches
-
-        # Set parameters and masks for topo-wise self-attention.
-        self.use_topo_self_attention = bool(use_topo_self_attention)
-        if use_topo_self_attention:
-            *akeys, key = jr.split(key, self.num_topo_batches + 1)
-            self.attention_params_topo = [
-                jr.normal(
-                    akeys[i], (3, topo_lengths[i], topo_lengths[i] + 1)
-                ) * 0.1 for i in range(self.num_topo_batches)
-            ]
-        else:
-            self.attention_params_topo = [jnp.nan] * self.num_topo_batches
 
         # Here, `self.indices[i]` includes the indices of the neurons needed to process 
         # `self.topo_batches[i]`. This is done for the same memory/parallelism reason 

@@ -58,6 +58,7 @@ class MCMLP(NeuralNetwork):
                 adjacency_dict[r] = list(col_idx)
             neuron += layer_size
         graph = nx.DiGraph(adjacency_dict)
+        topo_sort = list(range(num_neurons))
 
         super().__init__(
             graph,
@@ -65,6 +66,7 @@ class MCMLP(NeuralNetwork):
             output_neurons,
             hidden_activation,
             output_activation,
+            topo_sort=topo_sort,
             key=key,
             **kwargs
         )
