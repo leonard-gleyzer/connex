@@ -36,6 +36,7 @@ class NeuralNetwork(Module):
     adjacency_dict: Dict[int, List[int]] = static_field()
     adjacency_dict_inv: Dict[int, List[int]] = static_field()
     neuron_to_id: Dict[Any, int] = static_field()
+    id_to_neuron: Dict[int, Any] = static_field()
     topo_batches: List[Array] = static_field()
     num_topo_batches: int = static_field()
     neuron_to_topo_batch_idx: Dict[int, Tuple[int, int]] = static_field()
@@ -177,7 +178,7 @@ class NeuralNetwork(Module):
             # Previous neuron values strictly necessary to process the current topological batch.
             vals = values[indices]
             # Topo Norm.
-            if self.use_topo_norm:
+            if self.use_topo_norm and jnp.size(vals) > 1:
                 vals = self._apply_topo_norm(gamma, beta, vals)
             # Topo-level self-attention.
             if self.use_topo_self_attention:
@@ -204,15 +205,10 @@ class NeuralNetwork(Module):
     ###############################################################################
 
     def _apply_topo_norm(self, gamma: Array, beta: Array, vals: Array) -> Array:
-        """Function for a topo batch to standardize its inputs (unless the input array
-        has shape (1,), in which case it is left alone), followed by a learnable 
-        elementwise-affine transformation.
+        """Function for a topo batch to standardize its inputs , followed by a 
+        learnable elementwise-affine transformation.
         """
-        return lax.cond(
-            jnp.greater(jnp.size(vals), 1),
-            lambda: jnn.standardize(vals) * gamma + beta,
-            lambda: vals
-        )
+        return jnn.standardize(vals) * gamma + beta
 
 
     def _apply_topo_self_attention(
@@ -336,6 +332,7 @@ class NeuralNetwork(Module):
         self.topo_batches = [jnp.array(tb, dtype=int) for tb in topo_batches[1:]]
         self.num_topo_batches = len(self.topo_batches)
         self.neuron_to_id = neuron_to_id
+        self.id_to_neuron = {v: k for (k, v) in neuron_to_id.items()}
 
         # Maps a neuron id to its topological batch and position within that batch.
         neuron_to_topo_batch_idx = {}
@@ -478,10 +475,12 @@ class NeuralNetwork(Module):
         *bkeys, key = jr.split(key, self.num_topo_batches + 1)
         if use_topo_norm:
             self.gammas = [
-                jr.normal(gkeys[i], (topo_lengths[i],)) * 0.1 + 1 for i in range(self.num_topo_batches)
+                jr.normal(gkeys[i], (topo_lengths[i],)) * 0.1 + 1 
+                for i in range(self.num_topo_batches)
             ]
             self.betas = [
-                jr.normal(bkeys[i], (topo_lengths[i],)) * 0.1 for i in range(self.num_topo_batches)
+                jr.normal(bkeys[i], (topo_lengths[i],)) * 0.1 
+                for i in range(self.num_topo_batches)
             ]
         else:
             self.gammas = [jnp.nan] * self.num_topo_batches
@@ -494,7 +493,8 @@ class NeuralNetwork(Module):
             self.attention_params_topo = [
                 jr.normal(
                     akeys[i], (3, topo_lengths[i], topo_lengths[i] + 1)
-                ) * 0.1 for i in range(self.num_topo_batches)
+                ) * 0.1 
+                for i in range(self.num_topo_batches)
             ]
         else:
             self.attention_params_topo = [jnp.nan] * self.num_topo_batches
@@ -506,7 +506,8 @@ class NeuralNetwork(Module):
             self.attention_params_neuron = [
                 jr.normal(
                     akeys[i], (jnp.size(self.topo_batches[i]), 3, topo_lengths[i], topo_lengths[i] + 1)
-                ) * 0.1 for i in range(self.num_topo_batches)
+                ) * 0.1 
+                for i in range(self.num_topo_batches)
             ]
             outer_product = vmap(lambda x: jnp.outer(x, x))
             mask_fn = filter_jit(lambda m: jnp.where(outer_product(m), 0, jnp.inf))
@@ -532,7 +533,7 @@ class NeuralNetwork(Module):
 
 
     def _set_dropout_p(self, dropout_p: Union[float, Mapping[Any, float]]) -> None:
-        """Set the per-neuron dropout probabilities.
+        """Set the initial per-neuron dropout probabilities.
         """
         if isinstance(dropout_p, float):
             dropout_p = jnp.ones((self.num_neurons,)) * dropout_p
