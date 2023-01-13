@@ -153,7 +153,7 @@ def add_connections(
 
         tb_pos_old = [old_network.neuron_to_topo_batch_idx[id][1] for id in tb_old]
         tb_pos_old = np.array(tb_pos_old, dtype=int)
-        tb_old_weights = old_network.weights[tb_index][tb_pos_old:, intersection_old - min_old]
+        tb_old_weights = old_network.weights[tb_index][tb_pos_old, intersection_old - min_old]
 
         intersection_new = [_get_new_neuron_id_from_old(id) for id in intersection_old]
         intersection_new = np.array(intersection_new, dtype=int)
