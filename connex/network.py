@@ -36,11 +36,10 @@ class NeuralNetwork(Module):
     adjacency_dict: Dict[int, List[int]] = static_field()
     adjacency_dict_inv: Dict[int, List[int]] = static_field()
     neuron_to_id: Dict[Any, int] = static_field()
-    id_to_neuron: Dict[int, Any] = static_field()
     topo_batches: List[Array] = static_field()
     num_topo_batches: int = static_field()
     neuron_to_topo_batch_idx: Dict[int, Tuple[int, int]] = static_field()
-    topo_sort: np.ndarray = static_field()
+    topo_sort: List[Any] = static_field()
     min_index: np.ndarray = static_field()
     max_index: np.ndarray = static_field()
     masks: List[Array] = static_field()
@@ -115,8 +114,7 @@ class NeuralNetwork(Module):
         """
         super().__init__(**kwargs)
         print("Compiling network...")
-        self._set_topological_info(graph, topo_sort)
-        self._set_input_output_neurons(input_neurons, output_neurons)
+        self._set_topological_info(graph, input_neurons, output_neurons, topo_sort)
         self._set_activations(hidden_activation, output_activation)
         self._set_parameters(
             key, 
@@ -283,28 +281,16 @@ class NeuralNetwork(Module):
     #############################################################################
         
     def _set_topological_info(
-        self, graph: nx.DiGraph, topo_sort: Optional[Sequence[Any]]
+        self, 
+        graph: nx.DiGraph, 
+        input_neurons: Sequence[Any],
+        output_neurons: Sequence[Any],
+        topo_sort: Optional[Sequence[Any]]
     ) -> None:
         """Set the topological information and relevant attributes.
         """
-        if topo_sort is None:
-            topo_sort = list(nx.lexicographical_topological_sort(graph))
-        else:
-            graph_copy = nx.DiGraph(graph)
-            assert nx.is_directed_acyclic_graph(graph_copy)
-            # Check that the provided topological sort is valid.
-            for neuron in topo_sort:
-                assert graph_copy.in_degree(neuron) == 0
-                graph_copy.remove_node(neuron)
-        self.graph = graph
-        # Map a neuron to its `int` id, which is its position in the topological sort.
-        neuron_to_id = {neuron: id for (id, neuron) in enumerate(topo_sort)}
-        topo_sort_ids = [neuron_to_id[neuron] for neuron in topo_sort]
-        self.topo_sort = np.array(topo_sort_ids, dtype=int)
-        self.num_neurons = np.size(self.topo_sort)
-
         # Create an adjacency dict that maps a neuron id to its output ids and  
-        # an inverse adjacency dict that maps a neuron id to its input ids.
+        # an inverse adjacency dict that maps a neuron id to its input ids
         adjacency_dict = {}
         adjacency_dict_ = nx.to_dict_of_lists(graph)
         for (input, outputs) in adjacency_dict_.items():
@@ -314,45 +300,9 @@ class NeuralNetwork(Module):
         num_inputs_per_neuron = [len(self.adjacency_dict_inv[i]) for i in range(self.num_neurons)]
         self.num_inputs_per_neuron = jnp.array(num_inputs_per_neuron, dtype=float)
 
-        # Topological batching.
-        # See Section 2.2 of https://arxiv.org/pdf/2101.07965.pdf.
-        topo_batches, topo_batch, neurons_to_remove = [], [], []
-        for neuron in topo_sort:
-            if graph.in_degree(neuron) == 0:
-                topo_batch.append(neuron_to_id[neuron])
-                neurons_to_remove.append(neuron)
-            else:
-                topo_batches.append(np.array(topo_batch, dtype=int))
-                graph.remove_nodes_from(neurons_to_remove)
-                topo_batch = [neuron_to_id[neuron]]
-                neurons_to_remove = [neuron]
-        topo_batches.append(np.array(topo_batch, dtype=int))
-        # The first topo batch is technically the input neurons, but we don't include
-        # those here, since they are handled separately in the forward pass.
-        self.topo_batches = [jnp.array(tb, dtype=int) for tb in topo_batches[1:]]
-        self.num_topo_batches = len(self.topo_batches)
-        self.neuron_to_id = neuron_to_id
-        self.id_to_neuron = {v: k for (k, v) in neuron_to_id.items()}
-
-        # Maps a neuron id to its topological batch and position within that batch.
-        neuron_to_topo_batch_idx = {}
-        for i in range(self.num_topo_batches):
-            for (j, n) in enumerate(self.topo_batches[i]):
-                neuron_to_topo_batch_idx[int(n)] = (i, j)
-        self.neuron_to_topo_batch_idx = neuron_to_topo_batch_idx   
-
-
-    def _set_input_output_neurons(
-        self,
-        input_neurons: Sequence[Any],
-        output_neurons: Sequence[Any],
-    ) -> None:
-        """Set the input and output neurons.
-        """
+        # Set input neurons, output neurons, topological sort
         assert isinstance(input_neurons, Sequence)
         assert isinstance(output_neurons, Sequence)
-        input_neurons = [self.neuron_to_id[n] for n in input_neurons]
-        output_neurons = [self.neuron_to_id[n] for n in output_neurons]
         # Check that the input and output neurons are both non-empty.
         assert input_neurons and output_neurons
         # Check that the input and output neurons are disjoint.
@@ -364,8 +314,66 @@ class NeuralNetwork(Module):
         for neuron in output_neurons:
             assert not self.adjacency_dict[neuron]
         self.num_input_neurons = len(input_neurons)
+
+        if topo_sort is None:
+            topo_sort = nx.lexicographical_topological_sort(graph)
+        else:
+            graph_copy = nx.DiGraph(graph)
+            assert nx.is_directed_acyclic_graph(graph_copy)
+            # Check that the provided topological sort is valid.
+            for neuron in topo_sort:
+                assert graph_copy.in_degree(neuron) == 0
+                graph_copy.remove_node(neuron)
+        topo_sort = list(topo_sort)
+        # Make sure input neurons appear first in the topo sort
+        first_topo_neurons = topo_sort[:self.num_input_neurons]
+        if set(input_neurons) != set(first_topo_neurons):
+            for neuron in input_neurons:
+                topo_sort.remove(neuron)
+            topo_sort = input_neurons + topo_sort
+        # Make sure output neurons appear last in the topo sort
+        last_topo_neurons = topo_sort[-len(output_neurons):]
+        if set(output_neurons) != set(last_topo_neurons):
+            for neuron in output_neurons:
+                topo_sort.remove(neuron)
+            topo_sort = topo_sort + output_neurons
+
+        self.graph = graph
+        # Map a neuron to its `int` id, which is its position in the topo sort
+        neuron_to_id = {neuron: id for (id, neuron) in enumerate(topo_sort)}
+        self.topo_sort = list(topo_sort)
+        self.num_neurons = len(self.topo_sort)
+
+        input_neurons = [self.neuron_to_id[n] for n in input_neurons]
+        output_neurons = [self.neuron_to_id[n] for n in output_neurons]
         self.input_neurons = jnp.array(input_neurons, dtype=int)
         self.output_neurons = jnp.array(output_neurons, dtype=int)
+
+        # Topological batching
+        # See Section 2.2 of https://arxiv.org/pdf/2101.07965.pdf
+        topo_batches, topo_batch, neurons_to_remove = [], [], []
+        for neuron in topo_sort:
+            if graph.in_degree(neuron) == 0:
+                topo_batch.append(neuron_to_id[neuron])
+                neurons_to_remove.append(neuron)
+            else:
+                topo_batches.append(np.array(topo_batch, dtype=int))
+                graph.remove_nodes_from(neurons_to_remove)
+                topo_batch = [neuron_to_id[neuron]]
+                neurons_to_remove = [neuron]
+        topo_batches.append(np.array(topo_batch, dtype=int))
+        # The first topo batch technically has no input, so we don't include
+        # it here, since it is handled separately in the forward pass
+        self.topo_batches = [jnp.array(tb, dtype=int) for tb in topo_batches[1:]]
+        self.num_topo_batches = len(self.topo_batches)
+        self.neuron_to_id = neuron_to_id
+
+        # Maps a neuron id to its topological batch and position within that batch
+        neuron_to_topo_batch_idx = {}
+        for i in range(self.num_topo_batches):
+            for (j, n) in enumerate(self.topo_batches[i]):
+                neuron_to_topo_batch_idx[int(n)] = (i, j)
+        self.neuron_to_topo_batch_idx = neuron_to_topo_batch_idx   
 
     
     def _set_activations(
