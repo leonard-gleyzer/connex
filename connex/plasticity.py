@@ -1,5 +1,5 @@
 import functools as ft
-from typing import Any, Callable, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 
 import equinox as eqx
 import equinox.experimental as eqxe
@@ -15,26 +15,19 @@ from .network import NeuralNetwork
 from .utils import _identity
 
 
-def _get_new_neuron_id_from_old_fn(
+def _get_id_mappings_old_new(
     old_network: NeuralNetwork, new_network: NeuralNetwork
-) -> Callable:
-    def _get_new_neuron_id_from_old(old_id: int) -> Optional[int]:
-        neuron = old_network.id_to_neuron[old_id]
-        if neuron in new_network.graph.nodes:
-            return new_network.neuron_to_id[neuron]
-        return None
-    return _get_new_neuron_id_from_old
-
-
-def _get_old_neuron_id_from_new_fn(
-    old_network: NeuralNetwork, new_network: NeuralNetwork
-) -> Callable:
-    def _get_old_neuron_id_from_new(new_id: int) -> Optional[int]:
-        neuron = new_network.id_to_neuron[new_id]
-        if neuron in old_network.graph.nodes:
-            return old_network.neuron_to_id[neuron]
-        return None
-    return _get_old_neuron_id_from_new
+) -> Tuple[np.ndarray, np.ndarray]:
+    assert old_network.num_neurons == new_network.num_neurons
+    assert set(old_network.graph.nodes) == set(new_network.graph.nodes)
+    ids_old_to_new = np.empty((old_network.num_neurons,), dtype=int)
+    ids_new_to_old = np.empty((old_network.num_neurons,), dtype=int)
+    for neuron in old_network.graph.nodes:
+        old_id = old_network.neuron_to_id[neuron]
+        new_id = new_network.neuron_to_id[neuron]
+        ids_old_to_new[old_id] = new_id
+        ids_new_to_old[new_id] = old_id
+    return ids_old_to_new, ids_new_to_old
 
 
 def add_connections(
@@ -59,16 +52,18 @@ def add_connections(
     A `NeuralNetwork` object with the specified connections added and original
     parameters retained.
     """
+    # Set input and output neurons
+    input_neurons = [network.topo_sort[id] for id in network.input_neurons]
+    output_neurons = [network.topo_sort[id] for id in network.output_neurons]
+
     # Check that all new connections are between neurons actually in the network
+    # and that no connection have an input neurons as outputs
     existing_neurons = network.graph.nodes
-    for (input, outputs) in connections.items():
+    for input, outputs in connections.items():
         assert input in existing_neurons, input
         for output in outputs:
-            assert output in existing_neurons, output
-
-    # Set input and output neurons
-    input_neurons = [network.id_to_neuron[id] for id in network.input_neurons]
-    output_neurons = [network.id_to_neuron[id] for id in network.output_neurons]
+            assert output in existing_neurons, f"Neuron {output} does not exist in the network."
+            assert output not in input_neurons, f"Cannot add connection to input neuron {output}."
 
     # Set element-wise activations
     hidden_activation = network.hidden_activation \
@@ -84,7 +79,7 @@ def add_connections(
     # Copy dropout info to dict
     dropout_p = {}
     for id in network.topo_sort:
-        dropout_p[network.id_to_neuron[id]] = network.dropout_p[id]
+        dropout_p[network.topo_sort[id]] = network.dropout_p[id]
 
     # Update topo sort info (reference: https://stackoverflow.com/a/24764451)
     def _add_edge_rec(topo_sort, input, output, visited={}):
@@ -101,7 +96,7 @@ def add_connections(
         for (input_, output_) in new_edges:
             topo_sort, visited = _add_edge_rec(topo_sort, input_, output_, visited)
 
-    topo_sort = [network.id_to_neuron[id] for id in network.topo_sort]
+    topo_sort = network.topo_sort
     for input, outputs in connections.items():
         for output in outputs:
             topo_sort, _ = _add_edge_rec(topo_sort, input, output)
@@ -122,15 +117,14 @@ def add_connections(
         key=key,
     )
 
+    ids_old_to_new, ids_new_to_old = _get_id_mappings_old_new(old_network, new_network)
     # Copy neuron weights
     new_weights = [np.array(w) for w in new_network.weights]
-    _get_old_neuron_id_from_new = _get_old_neuron_id_from_new_fn(old_network, new_network)
-    _get_new_neuron_id_from_old = _get_new_neuron_id_from_old_fn(old_network, new_network)
     old_network = network
     # Loop through each topo batch in the new network and copy the corresponding weights
     # present in the old network to the new network
     for i, tb_new in enumerate(new_network.topo_batches):
-        tb_old = [_get_old_neuron_id_from_new(int(id)) for id in tb_new]
+        tb_old = [ids_new_to_old[id] for id in map(int, tb_new)]
         tb_old = np.array(tb_old, dtype=int)
         # Get the index of the topo batch `tb_old` is a subset of
         tb_index, _ = old_network.neuron_to_topo_batch_idx[tb_old[0]]
@@ -139,12 +133,11 @@ def add_connections(
             tb_old, np.array(old_network.topo_batches[tb_index])
         )
         assert intersection.size == tb_old.size
-
         min_old, max_old = old_network.min_index[tb_index], old_network.max_index[tb_index]
         range_old = np.arange(min_old, max_old + 1)
         min_new, max_new = new_network.min_index[i], new_network.max_index[i]
         range_new = np.arange(min_new, max_new + 1)
-        input_indices_old = [_get_old_neuron_id_from_new(id) for id in range_new]
+        input_indices_old = [ids_new_to_old[id] for id in range_new]
         input_indices_old = np.array(input_indices_old, dtype=int)
         intersection_old = np.intersect1d(range_old, input_indices_old)
         assert intersection_old.size > 0
@@ -155,13 +148,15 @@ def add_connections(
         tb_pos_old = np.array(tb_pos_old, dtype=int)
         tb_old_weights = old_network.weights[tb_index][tb_pos_old:, intersection_old - min_old]
 
-        intersection_new = [_get_new_neuron_id_from_old(id) for id in intersection_old]
+        intersection_new = [ids_old_to_new[id] for id in intersection_old]
         intersection_new = np.array(intersection_new, dtype=int)
         new_weights[i][:, intersection_new - min_new] = tb_old_weights
-
     new_weights = [jnp.array(w) for w in new_weights]
 
     # Copy neuron biases
+    new_biases = old_network.biases[
+        ids_new_to_old[np.arange(new_network.num_input_neurons, new_network.num_neurons)]
+    ]
     
     # Copy neuron-level attention parameters
 
