@@ -118,10 +118,12 @@ def add_connections(
     )
 
     ids_old_to_new, ids_new_to_old = _get_id_mappings_old_new(old_network, new_network)
-    # Copy neuron weights
-    new_weights = [np.array(w) for w in new_network.weights]
+    # Copy neuron parameters and attention parameters
+    new_weights_and_biases = [np.array(w) for w in new_network.weights_and_biases]
+    new_attention_params_neuron = [np.array(w) for w in new_network.attention_params_neuron]
+    new_attention_params_topo = [np.array(w) for w in new_network.attention_params_topo]
     old_network = network
-    # Loop through each topo batch in the new network and copy the corresponding weights
+    # Loop through each topo batch in the new network and copy the corresponding parameters
     # present in the old network to the new network
     for i, tb_new in enumerate(new_network.topo_batches):
         tb_old = [ids_new_to_old[id] for id in map(int, tb_new)]
@@ -143,28 +145,28 @@ def add_connections(
         assert intersection_old.size > 0
         # Re-order the values of `intersection_old` to reflect the order in `input_indices_old`
         intersection_old = input_indices_old[np.in1d(input_indices_old, intersection_old)]
+        intersection_old_ = intersection_old - min_old
 
         tb_pos_old = [old_network.neuron_to_topo_batch_idx[id][1] for id in tb_old]
         tb_pos_old = np.array(tb_pos_old, dtype=int)
-        tb_old_weights = old_network.weights[tb_index][tb_pos_old, intersection_old - min_old]
+        tb_old_weights_and_biases = old_network.weights_and_biases[tb_index][tb_pos_old, np.append(intersection_old_, -1)]
+        tb_old_attention_params_neuron = old_network.attention_params_neuron[tb_index][
+            tb_pos_old, :, intersection_old_, np.append(intersection_old_, -1)
+        ]
+        tb_old_attention_params_topo = old_network.attention_params_topo[tb_index][
+            :, intersection_old_, np.append(intersection_old_, -1)
+        ]
 
         intersection_new = [ids_old_to_new[id] for id in intersection_old]
         intersection_new = np.array(intersection_new, dtype=int)
-        new_weights[i][:, intersection_new - min_new] = tb_old_weights
-    new_weights = [jnp.array(w) for w in new_weights]
+        intersection_new_ = intersection_new - min_new
+        new_weights_and_biases[i][:, intersection_new_] = tb_old_weights_and_biases
+    new_weights_and_biases = [jnp.array(w) for w in new_weights_and_biases]
+    new_attention_params_neuron[i][:, :, intersection_new_, np.append(intersection_new_, -1)] = tb_old_attention_params_neuron
+    new_attention_params_topo[i][:, intersection_new_, np.append(intersection_new_, -1)] = tb_old_attention_params_topo
 
-    # Copy neuron biases
-    new_biases = old_network.biases[
-        ids_new_to_old[np.arange(new_network.num_input_neurons, new_network.num_neurons)]
-    ]
+    # Copy normalization parameters and adaptive activation parameters
     
-    # Copy neuron-level attention parameters
-
-    # Copy topo-level attention parameters
-
-    # Copy normalization parameters
-
-    # Copy adaptive activation parameters
 
     # Trasfer all copied parameters to new network
     
