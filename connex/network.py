@@ -22,17 +22,14 @@ class NeuralNetwork(Module):
     A neural network whose structure is specified by a DAG.
     Create your model by inheriting from this.
     """
-    weights: List[Array]
-    biases: Array
+    weights_and_biases: List[Array]
     hidden_activation: Callable
     output_activation: Callable
     gammas: Optional[Array]
     betas: Optional[Array]
     attention_params_topo: List[Array]
     attention_params_neuron: List[Array]
-    gain: Optional[Array]
-    amplification: Optional[Array]
-    graph: nx.DiGraph = static_field()
+    adaptive_activation_params: Optional[Array]
     adjacency_dict: Dict[int, List[int]] = static_field()
     adjacency_dict_inv: Dict[int, List[int]] = static_field()
     neuron_to_id: Dict[Any, int] = static_field()
@@ -162,9 +159,9 @@ class NeuralNetwork(Module):
         values = values.at[self.input_neurons].set(x * dropout_keep[self.input_neurons])
 
         # Forward pass in topological batch order.
-        for (tb, weights, mask, indices, gamma, beta, attn_params_t, attn_params_n, attn_mask_n) in zip(
+        for (tb, w_and_b, mask, indices, gamma, beta, attn_params_t, attn_params_n, attn_mask_n) in zip(
             self.topo_batches, 
-            self.weights, 
+            self.weights_and_biases, 
             self.masks,  
             self.indices,
             self.gammas,
@@ -187,7 +184,8 @@ class NeuralNetwork(Module):
                 _apply_neuron_self_attention = vmap(self._apply_neuron_self_attention, in_axes=[0, 0, 0, None])
                 vals = _apply_neuron_self_attention(tb, attn_params_n, attn_mask_n, vals)
             # Affine transformation, wx + b.
-            affine = vmap(jnp.dot)(weights * mask, vals) + self.biases[tb - self.num_input_neurons]
+            weights, biases = w_and_b[:, :-1], w_and_b[:, -1]
+            affine = vmap(jnp.dot)(weights * mask, vals) + biases
             # Apply activations/dropout.
             output_values = vmap(self._apply_activation)(tb, affine) * dropout_keep[tb]
             # Set new values.
@@ -253,8 +251,8 @@ class NeuralNetwork(Module):
         idx = id - self.num_input_neurons
         gain, amplification = lax.cond(
             self.use_adaptive_activations,
-            lambda: (self.gain[idx], self.amplification[idx]),
-            lambda: (1., 1.)
+            lambda: self.adaptive_activation_params[:, idx],
+            lambda: jnp.ones((2,))
         )
         affine_with_gain = jnp.expand_dims(affine * gain, 0)
         output = lax.cond(
@@ -456,20 +454,20 @@ class NeuralNetwork(Module):
         # the forward pass, since the minimum and maximum neurons needed to process a topological 
         # batch in parallel will be closest together when in topological order. 
         # All weights and biases are drawn iid ~ N(0, 0.01).
-        *wkeys, bkey, key = jr.split(key, self.num_topo_batches + 2)
+        *wbkeys, key = jr.split(key, self.num_topo_batches + 1)
         topo_lengths = self.max_index - self.min_index + 1
         num_non_input_neurons = self.num_neurons - self.num_input_neurons
-        self.weights = [
-            jr.normal(wkeys[i], (jnp.size(self.topo_batches[i]), topo_lengths[i])) * 0.1
+        self.weights_and_biases = [
+            jr.normal(wbkeys[i], (jnp.size(self.topo_batches[i]), topo_lengths[i] + 1)) * 0.1
             for i in range(self.num_topo_batches)
         ]
-        self.biases = jr.normal(bkey, (num_non_input_neurons,)) * 0.1
 
         # Here, `self.masks` is a list of 2D binary `jnp.ndarray` with identical structure
         # to `self.weights`. These are multiplied by the weights during the forward pass
         # to mask out weights for connections that are not present in the actual network.
         masks = []
-        for (tb, weights, min_idx) in zip(self.topo_batches, self.weights, self.min_index):
+        for (tb, w_and_b, min_idx) in zip(self.topo_batches, self.weights_and_biases, self.min_index):
+            weights = w_and_b[:, :-1]
             mask = np.zeros_like(weights)
             for (i, neuron) in enumerate(tb):
                 inputs = jnp.array(self.adjacency_dict_inv[int(neuron)], dtype=int)
@@ -536,8 +534,9 @@ class NeuralNetwork(Module):
         # drawn iid ~ N(1, 0.01).
         self.use_adaptive_activations = bool(use_adaptive_activations)
         gkey, akey, key = jr.split(key, 3)
-        self.gain = jr.normal(gkey, (num_non_input_neurons,)) * 0.1 + 1
-        self.amplification = jr.normal(akey, (num_non_input_neurons,)) * 0.1 + 1
+        gain = jr.normal(gkey, (num_non_input_neurons,)) * 0.1 + 1
+        amplification = jr.normal(akey, (num_non_input_neurons,)) * 0.1 + 1
+        self.adaptive_activation_params = jnp.array([gain, amplification])
 
 
     def _set_dropout_p(self, dropout_p: Union[float, Mapping[Any, float]]) -> None:
@@ -562,48 +561,17 @@ class NeuralNetwork(Module):
     ################ Public methods. ##################
     ###################################################
 
-    def to_networkx_graph(self) -> nx.DiGraph:
-        """Returns a `networkx.DiGraph` represention of the network with parameters
-        and other relevant information included as node/edge attributes.
+    def to_networkx_weighted_digraph(self) -> nx.DiGraph:
+        """Returns a `networkx.DiGraph` represention of the network with neuron weights
+        saved as edge attributes.
 
         **Returns**:
 
-        A `networkx.DiGraph` object that represents the network. The original graph
-        used to initialize the network is left unchanged.
-
-        In addition to any field(s) the nodes may already have, the nodes 
-        now also have the following additional `str` field(s):
-
-        - `'id'`: The neuron's position in the topological sort (an `int`)
-        - `'group'`: One of {`'input'`, `'hidden'`, `'output'`} (a `str`).
-        - `'bias'`: The corresponding neuron's bias (a `float`).
-
-        In addition to any field(s) the edges may already have, the edges 
-        now also have the following additional `str` field(s):
-
-        - `'weight'`: The corresponding network weight (a `float`).
+        A `networkx.DiGraph` object that represents the network, with neuron weights saved as
+        edge attributes. The original graph used to initialize the network is left unchanged.
         """            
         graph = deepcopy(self.graph)
 
-        node_attrs = {}
-        node_attrs_ = dict(graph.nodes(data=True))
-        for (neuron, id) in self.neuron_to_id.items():
-            if jnp.isin(id, self.input_neurons):
-                node_attrs[neuron] = {
-                    'id': id, 'group': 'input', 'bias': None, **node_attrs_[neuron]
-                }
-            elif jnp.isin(id, self.output_neurons):
-                bias = self.biases[id - self.num_input_neurons]
-                node_attrs[neuron] = {
-                    'id': id, 'group': 'output', 'bias': bias, **node_attrs_[neuron]
-                }
-            else:
-                bias = self.biases[id - self.num_input_neurons]
-                node_attrs[neuron] = {
-                    'id': id, 'group': 'hidden', 'bias': bias, **node_attrs_[neuron]
-                }
-        nx.set_node_attributes(graph, node_attrs)
-            
         edge_attrs = {}
         edge_attrs_ = {(i, o): data for (i, o, data) in graph.edges(data=True)}
         for (neuron, outputs) in self.adjacency_dict.items():
@@ -611,7 +579,7 @@ class NeuralNetwork(Module):
             for output in outputs:
                 col_idx = output - self.min_index[topo_batch_idx]
                 assert self.masks[topo_batch_idx][pos_idx, col_idx]
-                weight = self.weights[topo_batch_idx][pos_idx, col_idx]
+                weight = self.weights_and_biases[topo_batch_idx][pos_idx, col_idx]
                 edge_attrs[(neuron, output)] = {
                     'weight': weight, **edge_attrs_[(neuron, output)]
                 }
