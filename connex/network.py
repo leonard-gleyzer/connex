@@ -443,17 +443,14 @@ class NeuralNetwork(Module):
         dkey, key = jr.split(key, 2)
         eqxe.set_state(self.key, dkey)
 
-        # Set the network weights and biases. Here, `self.biases` is a `jnp.ndarray` of 
-        # shape `(num_neurons - num_input_neurons,)`, where `self.biases[i]` is the bias of 
-        # the neuron with topological index `i + self.num_input_neurons`, and `self.weights` 
-        # is a list of 2D `jnp.ndarray`s, where `self.weights[i]` are the weights used by the 
-        # neurons in `self.topo_batches[i]`. More specifically, `self.weights[i][j, k]` is 
-        # the weight of the connection from the neuron with topological index `k + mins[i]` 
-        # to the neuron with index `self.topo_batches[i][j]`. The weights are stored this way 
-        # in order to use minimal memory while allowing for maximal `vmap` parallelism during 
-        # the forward pass, since the minimum and maximum neurons needed to process a topological 
-        # batch in parallel will be closest together when in topological order. 
-        # All weights and biases are drawn iid ~ N(0, 0.01).
+        # Set the network weights and biases. Here, `self.weights_and_biases` is a list of 2D `jnp.ndarray`s, 
+        # where `self.weights_and_biases[i]` are the weights and biases used by the neurons in `self.topo_batches[i]`. 
+        # More specifically, `self.weights[i][j, k]` is the weight of the connection from the neuron with topological 
+        # index `k + mins[i]` to the neuron with index `self.topo_batches[i][j]`, and self.weights[i][j, -1] is the bias 
+        # of the neuron with index `self.topo_batches[i][j]`. The parameters are stored this way in order to use minimal 
+        # memory while allowing for maximal `vmap` parallelism during the forward pass, since the minimum and maximum 
+        # neurons needed to process a topological batch in parallel will usually be closest together when in topological 
+        # order. All weights and biases are drawn iid ~ N(0, 0.01).
         *wbkeys, key = jr.split(key, self.num_topo_batches + 1)
         topo_lengths = self.max_index - self.min_index + 1
         num_non_input_neurons = self.num_neurons - self.num_input_neurons
