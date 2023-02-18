@@ -1,4 +1,5 @@
 from copy import deepcopy
+import functools as ft
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import equinox.experimental as eqxe
@@ -25,8 +26,7 @@ class NeuralNetwork(Module):
     weights_and_biases: List[Array]
     hidden_activation: Callable
     output_activation: Callable
-    gammas: Optional[Array]
-    betas: Optional[Array]
+    topo_norm_params: List[Array]
     attention_params_topo: List[Array]
     attention_params_neuron: List[Array]
     adaptive_activation_params: Optional[Array]
@@ -147,63 +147,64 @@ class NeuralNetwork(Module):
         The result array from the forward pass. The order of the array elements will be
         the order of the output neurons passed in during initialization.
         """
-        # Neuron value array, updated as neurons are "fired".
+        # Neuron value array, updated as neurons are "fired"
         values = jnp.zeros((self.num_neurons,))
 
-        # Dropout.
+        # Dropout
         key = self._keygen() if key is None else key
         rand = jr.uniform(key, self.dropout_p.shape, minval=0, maxval=1)
         dropout_keep = jnp.greater(rand, self.dropout_p)
         
-        # Set input values.
+        # Set input values
         values = values.at[self.input_neurons].set(x * dropout_keep[self.input_neurons])
 
-        # Forward pass in topological batch order.
-        for (tb, w_and_b, mask, indices, gamma, beta, attn_params_t, attn_params_n, attn_mask_n) in zip(
+        # Forward pass in topological batch order
+        for (tb, w_and_b, mask, indices, attn_params_t, attn_params_n, attn_mask_n, norm_params, ada_params) in zip(
             self.topo_batches, 
             self.weights_and_biases, 
             self.masks,  
             self.indices,
-            self.gammas,
-            self.betas,
             self.attention_params_topo, 
             self.attention_params_neuron,
             self.attention_masks_neuron,
+            self.topo_norm_params,
+            self.adaptive_activation_params
         ):
-            # Previous neuron values strictly necessary to process the current topological batch.
+            # Previous neuron values strictly necessary to process the current topological batch
             vals = values[indices]
-            # Topo Norm.
+            # Topo Norm
             if self.use_topo_norm and jnp.size(vals) > 1:
-                vals = self._apply_topo_norm(gamma, beta, vals)
-            # Topo-level self-attention.
+                vals = self._apply_topo_norm(norm_params, vals)
+            # Topo-level self-attention
             if self.use_topo_self_attention:
                 vals = self._apply_topo_self_attention(attn_params_t, vals)
-            # Neuron-level self-attention.
+            # Neuron-level self-attention
             if self.use_neuron_self_attention:
                 # vals = jnp.tile(vals, (jnp.size(tb), 1))
                 _apply_neuron_self_attention = vmap(self._apply_neuron_self_attention, in_axes=[0, 0, 0, None])
                 vals = _apply_neuron_self_attention(tb, attn_params_n, attn_mask_n, vals)
-            # Affine transformation, wx + b.
+            # Affine transformation, wx + b
             weights, biases = w_and_b[:, :-1], w_and_b[:, -1]
             affine = vmap(jnp.dot)(weights * mask, vals) + biases
-            # Apply activations/dropout.
-            output_values = vmap(self._apply_activation)(tb, affine) * dropout_keep[tb]
-            # Set new values.
+            # Apply activations/dropout
+            output_values = vmap(self._apply_activation)(tb, affine, ada_params) * dropout_keep[tb]
+            # Set new values
             values = values.at[tb].set(output_values)
 
         # Return values pertaining to output neurons, with the group-wise 
-        # output activation applied.
+        # output activation applied
         return self.output_activation(values[self.output_neurons])
 
 
-    ###############################################################################
-    ################ Methods used during forward pass in __call__. ################
-    ###############################################################################
+    ##############################################################################
+    ################ Methods used during forward pass in __call__ ################
+    ##############################################################################
 
-    def _apply_topo_norm(self, gamma: Array, beta: Array, vals: Array) -> Array:
+    def _apply_topo_norm(self, norm_params: Array, vals: Array) -> Array:
         """Function for a topo batch to standardize its inputs , followed by a 
         learnable elementwise-affine transformation.
         """
+        gamma, beta = norm_params
         return jnn.standardize(vals) * gamma + beta
 
 
@@ -245,22 +246,21 @@ class NeuralNetwork(Module):
         return attention_weights @ value + vals
 
 
-    def _apply_activation(self, id: int, affine: float) -> Array:
+    def _apply_activation(self, id: int, affine: float, ada_params: Array) -> Array:
         """Function for a single neuron to apply its activation.
         """
-        idx = id - self.num_input_neurons
         gain, amplification = lax.cond(
             self.use_adaptive_activations,
-            lambda: self.adaptive_activation_params[:, idx],
+            lambda: ada_params,
             lambda: jnp.ones((2,))
         )
-        affine_with_gain = jnp.expand_dims(affine * gain, 0)
+        _expand = ft.partial(jnp.expand_dims, axis=0)
         output = lax.cond(
             jnp.isin(id, self.output_neurons),
-            lambda: affine_with_gain,
-            lambda: self.hidden_activation(affine_with_gain)
+            lambda: _expand(affine),
+            lambda: self.hidden_activation(_expand(affine * gain)) * amplification
         )
-        return jnp.squeeze(output) * amplification
+        return jnp.squeeze(output)
 
 
     def _keygen(self) -> jr.PRNGKey:
@@ -274,9 +274,9 @@ class NeuralNetwork(Module):
         return key
 
 
-    #############################################################################
-    ############ Methods used to set network attributes in __init__. ############
-    #############################################################################
+    ############################################################################
+    ############ Methods used to set network attributes in __init__ ############
+    ############################################################################
         
     def _set_topological_info(
         self, 
@@ -301,14 +301,14 @@ class NeuralNetwork(Module):
         # Set input neurons, output neurons, topological sort
         assert isinstance(input_neurons, Sequence)
         assert isinstance(output_neurons, Sequence)
-        # Check that the input and output neurons are both non-empty.
+        # Check that the input and output neurons are both non-empty
         assert input_neurons and output_neurons
-        # Check that the input and output neurons are disjoint.
+        # Check that the input and output neurons are disjoint
         assert not (set(input_neurons) & set(output_neurons))
-        # Check that input neurons themselves have no inputs.
+        # Check that input neurons themselves have no inputs
         for neuron in input_neurons:
             assert not self.adjacency_dict_inv[neuron]
-        # Check that output neurons themselves have no outputs.
+        # Check that output neurons themselves have no outputs
         for neuron in output_neurons:
             assert not self.adjacency_dict[neuron]
         self.num_input_neurons = len(input_neurons)
@@ -318,7 +318,7 @@ class NeuralNetwork(Module):
         else:
             graph_copy = nx.DiGraph(graph)
             assert nx.is_directed_acyclic_graph(graph_copy)
-            # Check that the provided topological sort is valid.
+            # Check that the provided topological sort is valid
             for neuron in topo_sort:
                 assert graph_copy.in_degree(neuron) == 0
                 graph_copy.remove_node(neuron)
@@ -383,7 +383,7 @@ class NeuralNetwork(Module):
         """
         # Activations may themselves be `eqx.Module`s, so we do this to ensure
         # that both `Module` and non-`Module` activations work with the same
-        # input shape.
+        # input shape
         hidden_activation_ = hidden_activation \
             if isinstance(hidden_activation, Module) else vmap(hidden_activation)
 
@@ -404,7 +404,7 @@ class NeuralNetwork(Module):
         self.hidden_activation = hidden_activation_
         self.output_activation = output_activation
         
-        # Done for plasticity functionality.
+        # Done for plasticity functionality
         self._hidden_activation = hidden_activation
 
 
@@ -453,9 +453,9 @@ class NeuralNetwork(Module):
         # order. All weights and biases are drawn iid ~ N(0, 0.01).
         *wbkeys, key = jr.split(key, self.num_topo_batches + 1)
         topo_lengths = self.max_index - self.min_index + 1
-        num_non_input_neurons = self.num_neurons - self.num_input_neurons
+        topo_sizes = [jnp.size(tb) for tb in self.topo_batches]
         self.weights_and_biases = [
-            jr.normal(wbkeys[i], (jnp.size(self.topo_batches[i]), topo_lengths[i] + 1)) * 0.1
+            jr.normal(wbkeys[i], (topo_sizes[i], topo_lengths[i] + 1)) * 0.1
             for i in range(self.num_topo_batches)
         ]
 
@@ -474,24 +474,18 @@ class NeuralNetwork(Module):
 
         # Set parameters for TopoNorm
         self.use_topo_norm = bool(use_topo_norm)
-        *gkeys, key = jr.split(key, self.num_topo_batches + 1)
-        *bkeys, key = jr.split(key, self.num_topo_batches + 1)
-        if use_topo_norm:
-            self.gammas = [
-                jr.normal(gkeys[i], (topo_lengths[i],)) * 0.1 + 1 
-                for i in range(self.num_topo_batches)
-            ]
-            self.betas = [
-                jr.normal(bkeys[i], (topo_lengths[i],)) * 0.1 
+        if self.use_topo_norm:
+            *nkeys, key = jr.split(key, self.num_topo_batches + 1)
+            self.topo_norm_params = [
+                jr.normal(nkeys[i], (2, topo_lengths[i])) * 0.1 + 1 
                 for i in range(self.num_topo_batches)
             ]
         else:
-            self.gammas = [jnp.nan] * self.num_topo_batches
-            self.betas = [jnp.nan] * self.num_topo_batches
+            self.topo_norm_params = [jnp.nan]
 
-        # Set parameters and masks for topo-wise self-attention.
+        # Set parameters and masks for topo-wise self-attention
         self.use_topo_self_attention = bool(use_topo_self_attention)
-        if use_topo_self_attention:
+        if self.use_topo_self_attention:
             *akeys, key = jr.split(key, self.num_topo_batches + 1)
             self.attention_params_topo = [
                 jr.normal(
@@ -500,15 +494,15 @@ class NeuralNetwork(Module):
                 for i in range(self.num_topo_batches)
             ]
         else:
-            self.attention_params_topo = [jnp.nan] * self.num_topo_batches
+            self.attention_params_topo = [jnp.nan]
 
-        # Set parameters and masks for neuron-wise self-attention.
+        # Set parameters and masks for neuron-wise self-attention
         self.use_neuron_self_attention = bool(use_neuron_self_attention)
-        if use_neuron_self_attention:
+        if self.use_neuron_self_attention:
             *akeys, key = jr.split(key, self.num_topo_batches + 1)
             self.attention_params_neuron = [
                 jr.normal(
-                    akeys[i], (jnp.size(self.topo_batches[i]), 3, topo_lengths[i], topo_lengths[i] + 1)
+                    akeys[i], (topo_sizes[i], 3, topo_lengths[i], topo_lengths[i] + 1)
                 ) * 0.1 
                 for i in range(self.num_topo_batches)
             ]
@@ -516,8 +510,8 @@ class NeuralNetwork(Module):
             mask_fn = filter_jit(lambda m: jnp.where(outer_product(m), 0, jnp.inf))
             self.attention_masks_neuron = [mask_fn(mask) for mask in self.masks]
         else:
-            self.attention_params_neuron = [jnp.nan] * self.num_topo_batches
-            self.attention_masks_neuron = [jnp.nan] * self.num_topo_batches
+            self.attention_params_neuron = [jnp.nan]
+            self.attention_masks_neuron = [jnp.nan]
 
         # Here, `self.indices[i]` includes the indices of the neurons needed to process 
         # `self.topo_batches[i]`. This is done for the same memory/parallelism reason 
@@ -530,10 +524,14 @@ class NeuralNetwork(Module):
         # Set trainable parameters for neuron-wise adaptive activations (if applicable), 
         # drawn iid ~ N(1, 0.01).
         self.use_adaptive_activations = bool(use_adaptive_activations)
-        gkey, akey, key = jr.split(key, 3)
-        gain = jr.normal(gkey, (num_non_input_neurons,)) * 0.1 + 1
-        amplification = jr.normal(akey, (num_non_input_neurons,)) * 0.1 + 1
-        self.adaptive_activation_params = jnp.array([gain, amplification])
+        if self.use_adaptive_activations:
+            akeys = jr.split(key, self.num_topo_batches)
+            self.adaptive_activation_params = [
+                jr.normal(akeys[i], (topo_sizes[i], 2)) * 0.1 + 1
+                for i in range(self.num_topo_batches)
+            ]
+        else:
+            self.adaptive_activation_params = [jnp.nan]
 
 
     def _set_dropout_p(self, dropout_p: Union[float, Mapping[Any, float]]) -> None:
@@ -560,7 +558,8 @@ class NeuralNetwork(Module):
 
     def to_networkx_weighted_digraph(self) -> nx.DiGraph:
         """Returns a `networkx.DiGraph` represention of the network with neuron weights
-        saved as edge attributes.
+        saved as edge attributes. This may be useful for applying network analysis techniques
+        to the neural network.
 
         **Returns**:
 
