@@ -122,53 +122,91 @@ def add_connections(
     new_weights_and_biases = [np.array(w) for w in new_network.weights_and_biases]
     new_attention_params_neuron = [np.array(w) for w in new_network.attention_params_neuron]
     new_attention_params_topo = [np.array(w) for w in new_network.attention_params_topo]
+    new_topo_norm_params = [np.array(w) for w in new_network.topo_norm_params]
+    new_adaptive_activation_params = [np.array(w) for w in new_network.adaptive_activation_params]
     old_network = network
     # Loop through each topo batch in the new network and copy the corresponding parameters
     # present in the old network to the new network
     for i, tb_new in enumerate(new_network.topo_batches):
-        tb_old = [ids_new_to_old[id] for id in map(int, tb_new)]
-        tb_old = np.array(tb_old, dtype=int)
+        tb_old = ids_new_to_old[tb_new]
         # Get the index of the topo batch `tb_old` is a subset of
         tb_index, _ = old_network.neuron_to_topo_batch_idx[tb_old[0]]
         # Make sure it is actually a subset
         intersection = np.intersect1d(
             tb_old, np.array(old_network.topo_batches[tb_index])
         )
-        assert intersection.size == tb_old.size
-        min_old, max_old = old_network.min_index[tb_index], old_network.max_index[tb_index]
-        range_old = np.arange(min_old, max_old + 1)
+        assert intersection.size == np.size(tb_old)
         min_new, max_new = new_network.min_index[i], new_network.max_index[i]
         range_new = np.arange(min_new, max_new + 1)
-        input_indices_old = [ids_new_to_old[id] for id in range_new]
-        input_indices_old = np.array(input_indices_old, dtype=int)
+        min_old, max_old = old_network.min_index[tb_index], old_network.max_index[tb_index]
+        range_old = np.arange(min_old, max_old + 1)
+        input_indices_old = ids_new_to_old[range_new]
         intersection_old = np.intersect1d(range_old, input_indices_old)
         assert intersection_old.size > 0
+
         # Re-order the values of `intersection_old` to reflect the order in `input_indices_old`
         intersection_old = input_indices_old[np.in1d(input_indices_old, intersection_old)]
         intersection_old_ = intersection_old - min_old
 
-        tb_pos_old = [old_network.neuron_to_topo_batch_idx[id][1] for id in tb_old]
-        tb_pos_old = np.array(tb_pos_old, dtype=int)
-        tb_old_weights_and_biases = old_network.weights_and_biases[tb_index][tb_pos_old, np.append(intersection_old_, -1)]
-        tb_old_attention_params_neuron = old_network.attention_params_neuron[tb_index][
-            tb_pos_old, :, intersection_old_, np.append(intersection_old_, -1)
-        ]
-        tb_old_attention_params_topo = old_network.attention_params_topo[tb_index][
-            :, intersection_old_, np.append(intersection_old_, -1)
-        ]
-
-        intersection_new = [ids_old_to_new[id] for id in intersection_old]
-        intersection_new = np.array(intersection_new, dtype=int)
+        intersection_new = ids_old_to_new[intersection_old]
         intersection_new_ = intersection_new - min_new
-        new_weights_and_biases[i][:, intersection_new_] = tb_old_weights_and_biases
-    new_weights_and_biases = [jnp.array(w) for w in new_weights_and_biases]
-    new_attention_params_neuron[i][:, :, intersection_new_, np.append(intersection_new_, -1)] = tb_old_attention_params_neuron
-    new_attention_params_topo[i][:, intersection_new_, np.append(intersection_new_, -1)] = tb_old_attention_params_topo
 
-    # Copy normalization parameters and adaptive activation parameters
-    
+        # Get the respective neuron positions within the old topological batches
+        pos_old = [old_network.neuron_to_topo_batch_idx[id][1] for id in tb_old]
+        pos_old = np.array(pos_old, dtype=int)
+
+        # Copy parameters
+        old_weights_and_biases = old_network.weights_and_biases[tb_index][pos_old, np.append(intersection_old_, -1)]
+        new_weights_and_biases[i][:, intersection_new_] = old_weights_and_biases
+
+        if new_network.use_neuron_self_attention:
+            old_attention_params_neuron = old_network.attention_params_neuron[tb_index][
+                pos_old, :, intersection_old_, np.append(intersection_old_, -1)
+            ]
+            new_attention_params_neuron[i][
+                :, :, intersection_new_, np.append(intersection_new_, -1)
+            ] = old_attention_params_neuron
+
+        if new_network.use_topo_self_attention:
+            old_attention_params_topo = old_network.attention_params_topo[tb_index][pos_old, intersection_old_]
+            new_attention_params_topo[i][:, intersection_new_] = old_attention_params_topo
+
+        if new_network.use_topo_norm:
+            old_topo_norm_params = old_network.topo_norm_params[tb_index][pos_old, intersection_old_]
+            new_topo_norm_params[i][:, intersection_new_] = old_topo_norm_params
+
+        if new_network.use_adaptive_activations:
+            old_adaptive_activation_params = old_network.adaptive_activation_params[tb_index][pos_old]
+            new_adaptive_activation_params[i] = old_adaptive_activation_params
+
+    new_weights_and_biases = [jnp.array(w) for w in new_weights_and_biases]
+    new_attention_params_neuron = [jnp.array(w) for w in new_attention_params_neuron] \
+        if new_network.use_neuron_self_attention else [jnp.nan]
+    new_attention_params_topo = [jnp.array(w) for w in new_attention_params_topo] \
+        if new_network.use_topo_self_attention else [jnp.nan]
+    new_topo_norm_params = [jnp.array(w) for w in new_topo_norm_params] \
+        if new_network.use_topo_norm else [jnp.nan]
+    new_adaptive_activation_params = [jnp.array(w) for w in new_adaptive_activation_params] \
+        if new_network.use_adaptive_activations else [jnp.nan]
 
     # Trasfer all copied parameters to new network
+    return eqx.tree_at(
+        lambda network: (
+            network.weights_and_biases, 
+            network.attention_params_neuron, 
+            network.attention_params_topo, 
+            network.topo_norm_params,
+            network.adaptive_activation_params
+        ),
+        new_network,
+        (
+            new_weights_and_biases,
+            new_attention_params_neuron,
+            new_attention_params_topo,
+            new_topo_norm_params,
+            new_adaptive_activation_params
+        )
+    )
     
 
 
