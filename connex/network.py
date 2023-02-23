@@ -263,12 +263,18 @@ class NeuralNetwork(Module):
         return jnp.squeeze(output)
 
 
+    def _get_current_key(self) -> jr.PRNGKey:
+        """Get the random key current stored in `self.key` (an `eqxe.StateIndex`)
+        """
+        return eqxe.get_state(self.key, jr.PRNGKey(0))
+
+
     def _keygen(self) -> jr.PRNGKey:
         """Get the random key contained in `self.key` (an `eqxe.StateIndex`), 
         split the key, set `self.key` to contain the new key, and return the 
         original key.
         """
-        key = eqxe.get_state(self.key, jr.PRNGKey(0))
+        key = self._get_current_key()
         _, new_key = jr.split(key)
         eqxe.set_state(self.key, new_key)
         return key
