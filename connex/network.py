@@ -25,7 +25,7 @@ class NeuralNetwork(Module):
     """
     weights_and_biases: List[Array]
     hidden_activation: Callable
-    output_activation: Callable
+    output_transformation: Callable
     topo_norm_params: List[Array]
     attention_params_topo: List[Array]
     attention_params_neuron: List[Array]
@@ -61,7 +61,7 @@ class NeuralNetwork(Module):
         input_neurons: Sequence[Any],
         output_neurons: Sequence[Any],
         hidden_activation: Callable = jnn.silu,
-        output_activation: Callable = _identity,
+        output_transformation: Callable = _identity,
         dropout_p: Union[float, Mapping[Any, float]] = 0.,
         use_topo_norm: bool = False,
         use_topo_self_attention: bool = False,
@@ -83,8 +83,8 @@ class NeuralNetwork(Module):
             in the order specified here.
         - `hidden_activation`: The activation function applied element-wise to the hidden 
             (i.e. non-input, non-output) neurons. It can itself be a trainable `equinox.Module`.
-        - `output_activation`: The activation function applied group-wise to the output 
-            neurons, e.g. `jax.nn.softmax`. It can itself be a trainable `equinox.Module`.
+        - `output_transformation`: The transformation applied group-wise to the output neurons, 
+            e.g. `jax.nn.softmax`. It can itself be a trainable `equinox.Module`.
         - `dropout_p`: Dropout probability. If a single `float`, the same dropout
             probability will be applied to all hidden neurons. If a `Mapping[Any, float]`,
             `dropout_p[i]` refers to the dropout probability of neuron `i`. All neurons default 
@@ -112,7 +112,7 @@ class NeuralNetwork(Module):
         super().__init__(**kwargs)
         print("Compiling network...")
         self._set_topological_info(graph, input_neurons, output_neurons, topo_sort)
-        self._set_activations(hidden_activation, output_activation)
+        self._set_activations(hidden_activation, output_transformation)
         self._set_parameters(
             key, 
             use_topo_norm, 
@@ -193,7 +193,7 @@ class NeuralNetwork(Module):
 
         # Return values pertaining to output neurons, with the group-wise 
         # output activation applied
-        return self.output_activation(values[self.output_neurons])
+        return self.output_transformation(values[self.output_neurons])
 
 
     ##############################################################################
@@ -383,7 +383,7 @@ class NeuralNetwork(Module):
     def _set_activations(
         self,
         hidden_activation: Callable, 
-        output_activation: Callable,
+        output_transformation: Callable,
     ) -> None:
         """Set the activation functions.
         """
@@ -402,13 +402,13 @@ class NeuralNetwork(Module):
 
         x = jnp.zeros_like(self.output_neurons)
         try:
-            y = output_activation(x)
+            y = output_transformation(x)
         except Exception as e:
             raise e
         assert jnp.array_equal(x.shape, y.shape)
 
         self.hidden_activation = hidden_activation_
-        self.output_activation = output_activation
+        self.output_transformation = output_transformation
         
         # Done for plasticity functionality
         self._hidden_activation = hidden_activation
@@ -424,10 +424,10 @@ class NeuralNetwork(Module):
     ) -> None:
         """Set the network parameters and relevent topological/indexing information.
         """
-        # Here, `min_index[i]` (`max_index[i]`) is the index representing the minimum
-        # (maximum) topological index of those neurons strictly necessary to 
-        # process `self.topo_batches[i]` from the previous topological batch. 
-        # If `i == 0`, the previous topological batch is the input neurons.
+        # Here, `min_index[i]` (`max_index[i]`) is the index representing the minimum (maximum) 
+        # topological index of those neurons strictly necessary to process `self.topo_batches[i]` 
+        # from the previous topological batch. If `i == 0`, the previous topological batch is the 
+        # input neurons.
         min_index = np.array([])
         max_index = np.array([])
         for tb in self.topo_batches:
