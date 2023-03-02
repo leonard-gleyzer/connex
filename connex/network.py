@@ -29,7 +29,7 @@ class NeuralNetwork(Module):
     topo_norm_params: List[Array]
     attention_params_topo: List[Array]
     attention_params_neuron: List[Array]
-    adaptive_activation_params: Optional[Array]
+    adaptive_activation_params: Array
     adjacency_dict: Dict[int, List[int]] = static_field()
     adjacency_dict_inv: Dict[int, List[int]] = static_field()
     neuron_to_id: Dict[Any, int] = static_field()
