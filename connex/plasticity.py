@@ -38,16 +38,16 @@ def add_connections(
 ) -> NeuralNetwork:
     """Add connections to the network.
     
-    **Arguments**:
+    **Arguments:**
 
     - `network`: A `NeuralNetwork` object.
     - `connections`: An adjacency dict mapping an existing neuron (by its 
         NetworkX id) to its new outgoing connections. Connections that already 
         exist are ignored.
     - `key`: The `jax.random.PRNGKey` used for new weight initialization. 
-        Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
+        Optional, keyword-only argument. Defaults to the key stored in `network.key_state`.
 
-    **Returns**:
+    **Returns:**
 
     A `NeuralNetwork` object with the specified connections added and original
     parameters retained.
@@ -81,7 +81,7 @@ def add_connections(
     for id in network.topo_sort:
         dropout_p[network.topo_sort[id]] = network.dropout_p[id]
 
-    # Update topo sort info (reference: https://stackoverflow.com/a/24764451)
+    # Update topological sort (reference: https://stackoverflow.com/a/24764451)
     def _add_edge_rec(topo_sort, input, output, visited={}):
         input_index = topo_sort.index(input)
         output_index = topo_sort.index(output)
@@ -101,20 +101,23 @@ def add_connections(
         for output in outputs:
             topo_sort, _ = _add_edge_rec(topo_sort, input, output)
 
+    # Random key
+    key = key if key is not None else network._get_current_key()
+
     # Create new network
     new_network = NeuralNetwork(
-        new_graph,
-        input_neurons,
-        output_neurons,
-        hidden_activation,
-        network.output_activation,
-        dropout_p,
-        network.use_topo_norm,
-        network.use_topo_self_attention,
-        network.use_neuron_self_attention,
-        network.use_adaptive_activations,
+        graph=new_graph,
+        input_neurons=input_neurons,
+        output_neurons=output_neurons,
+        hidden_activation=hidden_activation,
+        output_activation=network.output_transformation,
+        dropout_p=dropout_p,
+        use_topo_norm=network.use_topo_norm,
+        use_topo_self_attention=network.use_topo_self_attention,
+        use_neuron_self_attention=network.use_neuron_self_attention,
+        use_adaptive_activations=network.use_adaptive_activations,
         topo_sort=topo_sort,
-        key=key,
+        key=key
     )
 
     ids_old_to_new, ids_new_to_old = _get_id_mappings_old_new(old_network, new_network)
@@ -135,7 +138,7 @@ def add_connections(
         intersection = np.intersect1d(
             tb_old, np.array(old_network.topo_batches[tb_index])
         )
-        assert intersection.size == np.size(tb_old)
+        assert intersection.size == tb_old.size
         min_new, max_new = new_network.min_index[i], new_network.max_index[i]
         range_new = np.arange(min_new, max_new + 1)
         min_old, max_old = old_network.min_index[tb_index], old_network.max_index[tb_index]
@@ -147,7 +150,6 @@ def add_connections(
         # Re-order the values of `intersection_old` to reflect the order in `input_indices_old`
         intersection_old = input_indices_old[np.in1d(input_indices_old, intersection_old)]
         intersection_old_ = intersection_old - min_old
-
         intersection_new = ids_old_to_new[intersection_old]
         intersection_new_ = intersection_new - min_new
 
@@ -157,7 +159,7 @@ def add_connections(
 
         # Copy parameters
         old_weights_and_biases = old_network.weights_and_biases[tb_index][pos_old, np.append(intersection_old_, -1)]
-        new_weights_and_biases[i][:, intersection_new_] = old_weights_and_biases
+        new_weights_and_biases[i][:, np.append(intersection_new_, -1)] = old_weights_and_biases
 
         if new_network.use_neuron_self_attention:
             old_attention_params_neuron = old_network.attention_params_neuron[tb_index][
@@ -189,9 +191,10 @@ def add_connections(
     new_adaptive_activation_params = [jnp.array(w) for w in new_adaptive_activation_params] \
         if new_network.use_adaptive_activations else [jnp.nan]
 
-    # Trasfer all copied parameters to new network
+    # Trasfer all copied parameters to new network and return
     return eqx.tree_at(
-        lambda network: (
+        lambda network: 
+        (
             network.weights_and_biases, 
             network.attention_params_neuron, 
             network.attention_params_topo, 
@@ -207,293 +210,316 @@ def add_connections(
             new_adaptive_activation_params
         )
     )
+
+
+def remove_connections(
+    network: NeuralNetwork,
+    connections: Mapping[Any, Sequence[Any]],
+) -> NeuralNetwork:
+    """Remove connections from the network.
     
+    **Arguments:**
+
+    - `network`: A `NeuralNetwork` object.
+    - `connections`: An adjacency dict mapping an existing neuron (by its 
+        NetworkX id) to its current outgoing connections to remove. Connections that
+        do not exist are ignored.
+
+    **Returns:**
+
+    A `NeuralNetwork` object with the specified connections removed and original
+    parameters retained.
+    """
+    # Set input and output neurons
+    input_neurons = [network.topo_sort[id] for id in network.input_neurons]
+    output_neurons = [network.topo_sort[id] for id in network.output_neurons]
+
+    # Check that all new connections are between neurons actually in the network
+    existing_neurons = network.graph.nodes
+    for input, outputs in connections.items():
+        assert input in existing_neurons, input
+        for output in outputs:
+            assert output in existing_neurons, f"Neuron {output} does not exist in the network."
+
+    # Set element-wise activations
+    hidden_activation = network.hidden_activation \
+        if isinstance(network.hidden_activation, eqx.Module) \
+        else network._hidden_activation
+
+    # Update connectivity information
+    new_graph = nx.DiGraph(network.graph)
+    for (input, outputs) in connections.items():
+        edges_to_remove = [(input, output) for output in outputs]
+        new_graph.remove_edges_from(edges_to_remove)
+
+    # Copy dropout info to dict
+    dropout_p = {}
+    for id in network.topo_sort:
+        dropout_p[network.topo_sort[id]] = network.dropout_p[id]
+
+    # Update topological sort
+    topo_sort = network.topo_sort
+    neuron_inputs = network.adjacency_dict_inv
+    unique_outputs = {}
+    for input, outputs in connections.items():
+        for output in outputs:
+            unique_outputs.add(output)
+            neuron_inputs[output].remove(input)
+    # Remove all the output neurons of connections to remove from the topo sort
+    for output in unique_outputs:
+        topo_sort.remove(output)
+    # Add each of them back in immediately after the neuron with the greatest
+    # topological index that exists as one of the removed neuron's inputs
+    for output in unique_outputs:
+        # TODO: topo_sort this info within the dict in network?
+        max_input_idx = max(map(network.neuron_to_id.get, neuron_inputs[output]))
+        neuron = network.topo_sort[max_input_idx]
+        neuron_idx = topo_sort.index(neuron) # TODO: this seems inefficient
+        topo_sort.insert(neuron_idx + 1, output)
+
+    # Get the current network key
+    network_key = network._get_current_key()
+
+    # Create new network
+    new_network = NeuralNetwork(
+        graph=new_graph,
+        input_neurons=input_neurons,
+        output_neurons=output_neurons,
+        hidden_activation=hidden_activation,
+        output_activation=network.output_transformation,
+        dropout_p=dropout_p,
+        use_topo_norm=network.use_topo_norm,
+        use_topo_self_attention=network.use_topo_self_attention,
+        use_neuron_self_attention=network.use_neuron_self_attention,
+        use_adaptive_activations=network.use_adaptive_activations,
+        topo_sort=topo_sort,
+        key=network_key
+    )
+
+    ids_old_to_new, ids_new_to_old = _get_id_mappings_old_new(old_network, new_network)
+    # Copy neuron parameters and attention parameters
+    _jnp_to_np = lambda lst: list(map(np.array, lst))
+    new_weights_and_biases = _jnp_to_np(new_network.weights_and_biases) # TODO: idk which I like more
+    new_attention_params_neuron = [np.array(w) for w in new_network.attention_params_neuron]
+    new_attention_params_topo = [np.array(w) for w in new_network.attention_params_topo]
+    new_topo_norm_params = [np.array(w) for w in new_network.topo_norm_params]
+    new_adaptive_activation_params = [np.array(w) for w in new_network.adaptive_activation_params]
+    old_network = network
+    # Loop through each topo batch in the old network and copy the corresponding parameters
+    # present in the new network from the old network
+    for i, tb_old in enumerate(old_network.topo_batches):
+        tb_new = ids_old_to_new[tb_old]
+        # Get the index in the old network of the topo batch `tb_new` is a subset of
+        tb_index, _ = new_network.neuron_to_topo_batch_idx[tb_new[0]]
+        # Make sure it is actually a subset
+        intersection = np.intersect1d(
+            tb_new, np.array(new_network.topo_batches[tb_index])
+        )
+        assert intersection.size == tb_new.size
+        min_old, max_old = old_network.min_index[i], new_network.max_index[i]
+        range_old = np.arange(min_old, max_old + 1)
+        min_new, max_new = new_network.min_index[tb_index], new_network.max_index[tb_index]
+        range_new = np.arange(min_new, max_new + 1)
+        input_indices_new = ids_old_to_new[range_old]
+        intersection_new = np.intersect1d(range_new, input_indices_new)
+        assert intersection_new.size > 0
+
+        # Re-order the values of `intersection_new` to reflect the order in `input_indices_new`
+        intersection_new = input_indices_new[np.in1d(input_indices_new, intersection_new)]
+        intersection_new_ = intersection_new - min_new
+        intersection_old = ids_new_to_old[intersection_new]
+        intersection_old_ = intersection_old - min_old
+
+        # Get the respective neuron positions within the new topological batches
+        pos_new = [new_network.neuron_to_topo_batch_idx[id][1] for id in tb_new]
+        pos_new = np.array(pos_new, dtype=int)
+
+        # Copy parameters
+        old_weights_and_biases = old_network.weights_and_biases[i][:, np.append(intersection_old_, -1)]
+        new_network.weights_and_biases[tb_index][pos_new, np.append(intersection_new_, -1)] = old_weights_and_biases
+
+        if new_network.use_neuron_self_attention:
+            old_attention_params_neuron = old_network.attention_params_neuron[i][
+                :, :, intersection_new_, np.append(intersection_new_, -1)
+            ]
+            new_attention_params_neuron[tb_index][
+                pos_new, :, intersection_old_, np.append(intersection_new_, -1)
+            ] = old_attention_params_neuron
+
+        if new_network.use_topo_self_attention:
+            old_attention_params_topo = old_network.attention_params_topo[i][:, intersection_new_]
+            new_attention_params_topo[tb_index][pos_new, intersection_old_] = old_attention_params_topo
+
+        if new_network.use_topo_norm:
+            old_topo_norm_params = old_network.topo_norm_params[i][:, intersection_new_]
+            new_topo_norm_params[tb_index][pos_new, intersection_old_] = old_topo_norm_params
+
+        if new_network.use_adaptive_activations:
+            old_adaptive_activation_params = old_network.adaptive_activation_params[i]
+            new_adaptive_activation_params[tb_index][pos_new] = old_adaptive_activation_params
+
+    new_weights_and_biases = [jnp.array(w) for w in new_weights_and_biases]
+    new_attention_params_neuron = [jnp.array(w) for w in new_attention_params_neuron] \
+        if new_network.use_neuron_self_attention else [jnp.nan]
+    new_attention_params_topo = [jnp.array(w) for w in new_attention_params_topo] \
+        if new_network.use_topo_self_attention else [jnp.nan]
+    new_topo_norm_params = [jnp.array(w) for w in new_topo_norm_params] \
+        if new_network.use_topo_norm else [jnp.nan]
+    new_adaptive_activation_params = [jnp.array(w) for w in new_adaptive_activation_params] \
+        if new_network.use_adaptive_activations else [jnp.nan]
+
+    # Trasfer all copied parameters to new network and return
+    return eqx.tree_at(
+        lambda network: 
+        (
+            network.weights_and_biases, 
+            network.attention_params_neuron, 
+            network.attention_params_topo, 
+            network.topo_norm_params,
+            network.adaptive_activation_params
+        ),
+        new_network,
+        (
+            new_weights_and_biases,
+            new_attention_params_neuron,
+            new_attention_params_topo,
+            new_topo_norm_params,
+            new_adaptive_activation_params
+        )
+    )
 
 
-# def remove_connections(
-#     network: NeuralNetwork,
-#     connections: Mapping[int, Sequence[int]],
-#     input_neurons: Optional[Sequence[int]] = None,
-#     output_neurons: Optional[Sequence[int]] = None,
-# ) -> NeuralNetwork:
-#     """Remove connections from the network.
+def add_hidden_neurons(
+    network: NeuralNetwork,
+    new_hidden_neurons: Sequence[Any],
+    *,
+    key: Optional[jr.PRNGKey] = None
+) -> NeuralNetwork:
+    """Add hidden neurons to the network. Note that this function only adds neurons themselves,
+    not any connections associated with the new neurons, effectively adding them as isolated nodes 
+    in the graph. Use `cnx.add_connections` after this function has been called to add the desired 
+    connections.
+
+    **Arguments:**
+
+    - `network`: The `NeuralNetwork` to add neurons to
+    - `new_hidden_neurons`: A sequence of new hidden neurons (more specifically, their 
+        identifiers/names) to add to the network. These must be unique, i.e. cannot already
+        exist in the network. These must also specifically be hidden neurons. To add input or 
+        output neurons, use `cnx.add_input_neurons` or `cnx.add_output_neurons`.
+    - `key`: The `jax.random.PRNGKey` used for new parameter initialization. 
+        Optional, keyword-only argument. Defaults to the key saved in `network.key_state`.
+
+    **Returns:**
+
+    A `NeuralNetwork` with the new neurons and respective connections added and original
+    parameters present in the original network retained.
+    """
+    # Set input and output neurons (TODO: idk I don't like this?)
+    input_neurons = [network.topo_sort[id] for id in network.input_neurons]
+    output_neurons = [network.topo_sort[id] for id in network.output_neurons]
+
+    # Check that none of the new neurons already exist in the network
+    existing_neurons = network.graph.nodes
+    for neuron in new_hidden_neurons:
+        assert neuron not in existing_neurons, neuron
+
+    # Set element-wise activations
+    hidden_activation = network.hidden_activation \
+        if isinstance(network.hidden_activation, eqx.Module) \
+        else network._hidden_activation
+
+    # Update graph information
+    new_graph = nx.DiGraph(network.graph)
+    new_graph.add_nodes_from(new_hidden_neurons)
+
+    # Copy dropout info to dict (TODO: idk I don't like this?)
+    dropout_p = {}
+    for id in network.topo_sort:
+        dropout_p[network.topo_sort[id]] = network.dropout_p[id]
+
+    # Update topological sort
+    topo_sort = network.topo_sort
+    num_output_neurons = len(output_neurons)
+    # It doesn't really matter where in a topological sort new isolated nodes are added, 
+    # it still remains a valid topological sort. We add them right before the output neurons
+    # to make it easier to keep track of indices when copying parameters over.
+    topo_sort = topo_sort[:-num_output_neurons] + list(new_hidden_neurons) + output_neurons
+
+    # Random key
+    key = key if key is not None else network._get_current_key()
+
+    # Create new network
+    new_network = NeuralNetwork(
+        graph=new_graph,
+        input_neurons=input_neurons,
+        output_neurons=output_neurons,
+        hidden_activation=hidden_activation,
+        output_activation=network.output_transformation,
+        dropout_p=dropout_p,
+        use_topo_norm=network.use_topo_norm,
+        use_topo_self_attention=network.use_topo_self_attention,
+        use_neuron_self_attention=network.use_neuron_self_attention,
+        use_adaptive_activations=network.use_adaptive_activations,
+        topo_sort=topo_sort,
+        key=key
+    )
+
+    num_new_hidden_neurons = len(new_hidden_neurons)
+    old_network = network
+    assert old_network.num_topo_batches == new_network.num_topo_batches
+    for i in range(old_network.num_topo_batches - 1):
+        assert old_network.weights_and_biases[i].shape == new_network.weights_and_biases[i].shape
+        assert old_network.attention_params_neuron[i].shape == new_network.attention_params_neuron[i].shape
+        assert old_network.attention_params_topo[i].shape == new_network.attention_params_topo[i].shape
+        assert old_network.topo_norm_params[i].shape == new_network.topo_norm_params[i].shape
     
-#     **Arguments**:
+    # Copy weights and biases
+    assert old_network.weights_and_biases[-1].shape == new_network.weights_and_biases[-1][:-num_new_hidden_neurons].shape
+    new_weights_and_biases = old_network.weights_and_biases[:-1] + \
+        [new_network.weights_and_biases[-1].at[-num_output_neurons:].set(old_network.weights_and_biases[-1])]
+    # Copy neuron-level attention parameters
+    assert old_network.attention_params_neuron[-1].shape == new_network.attention_params_neuron[-1][:-num_new_hidden_neurons].shape
+    new_attention_params_neuron = old_network.attention_params_neuron[:-1] + \
+        [new_network.attention_params_neuron[-1].at[-num_output_neurons:].set(old_network.attention_params_neuron[-1])] \
+        if new_network.use_neuron_self_attention else [jnp.nan]
+    # Copy topo-level attention parameters
+    assert old_network.attention_params_topo[-1].shape == new_network.attention_params_topo[-1][:-num_new_hidden_neurons].shape
+    new_attention_params_topo = old_network.attention_params_topo[:-1] + \
+        [new_network.attention_params_topo[-1].at[-num_output_neurons:].set(old_network.attention_params_topo[-1])] \
+        if new_network.use_topo_self_attention else [jnp.nan]
+    # Copy topo norm parameters
+    assert old_network.topo_norm_params[-1].shape == new_network.topo_norm_params[-1][:-num_new_hidden_neurons].shape
+    new_topo_norm_params = old_network.topo_norm_params[:-1] + \
+        [new_network.topo_norm_params[-1].at[-num_output_neurons:].set(old_network.topo_norm_params[-1])] \
+        if new_network.use_topo_norm else [jnp.nan]
+    # Copy adaptive activation parameters
+    assert old_network.adaptive_activation_params.size == new_network.adaptive_activation_params.size - num_new_hidden_neurons
+    indices = jnp.arange(old_network.num_neurons - num_output_neurons).append(
+        jnp.arange(new_network.num_neurons - num_output_neurons, new_network.num_neurons)
+    )
+    new_adaptive_activation_params = new_network.adaptive_activation_params.at[indices].set(old_network.adaptive_activation_params)
 
-#     - `network`: A `NeuralNetwork` object.
-#     - `connections`: An adjacency dict mapping an existing neuron id to
-#         its outgoing connections to remove. Connections that do not exist 
-#         are ignored.
-#     - `input_neurons`: A sequence of `int` indicating the ids of the input 
-#         neurons. The order here matters, as the input data is passed into 
-#         the input neurons in the order passed in here. Optional argument. 
-#         If `None`, the input neurons of the original network are retained.
-#     - `output_neurons`: A sequence of `int` indicating the ids of the output 
-#         neurons. The order here matters, as the output values are read from 
-#         the output neurons in the order passed in here. Optional argument. 
-#         If `None`, the output neurons of the original network are retained.
+    # Trasfer all copied parameters to new network and return
+    return eqx.tree_at(
+        lambda network: 
+        (
+            network.weights_and_biases, 
+            network.attention_params_neuron, 
+            network.attention_params_topo, 
+            network.topo_norm_params,
+            network.adaptive_activation_params
+        ),
+        new_network,
+        (
+            new_weights_and_biases,
+            new_attention_params_neuron,
+            new_attention_params_topo,
+            new_topo_norm_params,
+            new_adaptive_activation_params
+        )
+    )
 
-#     **Returns**:
-
-#     A `NeuralNetwork` object with the specified connections removed and original
-#     parameters retained.
-#     """
-#     # Set input and output neurons.
-#     if input_neurons is None:
-#         input_neurons = network.input_neurons
-#     if output_neurons is None:
-#         output_neurons = network.output_neurons
-
-#     # Set element-wise activations.
-#     hidden_activation = network.hidden_activation \
-#         if isinstance(network.hidden_activation, eqx.Module) \
-#         else network._hidden_activation
-#     output_activation_elem = network.output_activation_elem \
-#         if isinstance(network.output_activation_elem, eqx.Module) \
-#         else network._output_activation_elem
-
-#     # Update connectivity information.
-#     adjacency_dict = network.adjacency_dict
-#     for (input, outputs) in connections.items():
-#         for output in outputs:
-#             if output in adjacency_dict[input]:
-#                 adjacency_dict[input].remove(output)
-
-#     # Create new network.
-#     new_network = NeuralNetwork(
-#         network.num_neurons,
-#         adjacency_dict,
-#         input_neurons,
-#         output_neurons,
-#         hidden_activation,
-#         output_activation_elem,
-#         network.output_activation_group,
-#         network.get_dropout_p(),
-#         key=network._dropout_key()
-#     )
-
-#     # Transfer relevant parameters from original network.
-#     new_masks = [np.array(m) for m in new_network.masks]
-#     new_weights = [np.array(w) for w in new_network.weights]
-#     new_bias = np.array(new_network.bias)
-#     new_min_max_diffs = new_network.maxs - new_network.mins
-#     for n in new_network.topo_sort[new_network.num_input_neurons:]:
-#         old_batch_idx, old_pos_idx = network.neuron_to_topo_batch_idx[n]
-#         new_batch_idx, new_pos_idx = new_network.neuron_to_topo_batch_idx[n]
-#         for i in range(new_min_max_diffs[new_batch_idx]):
-#             if new_masks[new_batch_idx][new_pos_idx, i]:
-#                 in_neuron = new_network.topo_sort[i + new_network.mins[new_batch_idx]]
-#                 weight = network.weights[old_batch_idx][
-#                     old_pos_idx, 
-#                     network.topo_sort_inv[in_neuron] - network.mins[old_batch_idx]
-#                 ]
-#                 new_weights[new_batch_idx][
-#                     new_pos_idx, 
-#                     new_network.topo_sort_inv[in_neuron] - new_network.mins[new_batch_idx]
-#                 ] = weight
-#         bias = network.bias[network.topo_sort_inv[n] - network.num_input_neurons]
-#         new_bias[new_network.topo_sort_inv[n] - new_network.num_input_neurons] = bias
-#     new_weights = [jnp.array(w) for w in new_weights]
-#     new_bias = jnp.array(new_bias)
-
-#     return eqx.tree_at(
-#         lambda net: (net.weights, net.bias), new_network, (new_weights, new_bias)
-#     )
-
-
-# def add_neurons(
-#     network: NeuralNetwork,
-#     new_neuron_data: Sequence[Mapping],
-# ) -> Tuple[NeuralNetwork, Sequence[int]]:
-#     """Add neurons to the network. These can be input, hidden, or output neurons.
-    
-#     **Arguments**:
-    
-#     - `network`: A `NeuralNetwork` object.
-#     - `new_neuron_data`: A sequence of dictionaries, where each dictionary 
-#         represents a new neuron to add to the network. Each dictionary must 
-#         have 4 `str` fields:
-#         * `'in_neurons'`: An `Optional[Sequence[int]]` indexing the neurons from the 
-#             original network that feed into the new neuron.
-#         * `'out_neurons'`: An `Optional[Sequence[int]]` indexing the neurons from the 
-#             original network which the new neuron feeds into.
-#         * `'group'`: One of {`'input'`, `'hidden'`, `'output'`}. A `str` representing
-#             which group the new neuron belongs to.
-#         * `'dropout_p'`: An `Optional[float]`, the dropout probability for the new neuron. 
-#             Defaults to 0.
-
-#     **Returns**:
-
-#     A 2-tuple where the first element is the new `NeuralNetwork` with the new neurons
-#     added and parameters from original neurons retained, and the second element 
-#     is the sequence of the ids assigned to the added neurons in the order they 
-#     were passed in through the input argument `new_neuron_data`.
-#     """
-#     num_new_neurons = len(new_neuron_data)
-#     total_num_neurons = network.num_neurons + num_new_neurons
-#     adjacency_matrix = jnp.zeros((total_num_neurons, total_num_neurons))
-#     adjacency_matrix = adjacency_matrix \
-#         .at[:-num_new_neurons, :-num_new_neurons] \
-#         .set(network.adjacency_matrix)
-
-#     input_neurons = network.input_neurons
-#     output_neurons = network.output_neurons
-#     dropout_p = network.get_dropout_p()
-#     id = network.num_neurons
-
-#     for neuron_datum in new_neuron_data:
-#         in_neurons = neuron_datum['in_neurons']
-#         if in_neurons is not None:
-#             in_neurons = jnp.array(in_neurons, dtype=int)
-#             adjacency_matrix = adjacency_matrix.at[in_neurons, id].set(1)
-#         out_neurons = neuron_datum['out_neurons']
-#         if out_neurons is not None:
-#             out_neurons = jnp.array(out_neurons, dtype=int)
-#             adjacency_matrix = adjacency_matrix.at[id, out_neurons].set(1)
-
-#         group = neuron_datum['group']
-#         assert group in {'input', 'hidden', 'output'}
-#         if group == 'input':
-#             input_neurons = jnp.append(input_neurons, id)
-#         elif group == 'output':
-#             output_neurons = jnp.append(output_neurons, id)
-
-#         _dropout_p = neuron_datum['dropout_p']
-#         if _dropout_p is None:
-#             _dropout_p = 0.
-#         dropout_p = jnp.append(dropout_p, _dropout_p)
-        
-#         id += 1
-
-#     key = eqxe.get_state(network.key, jr.PRNGKey(0))
-#     parameter_matrix = jr.normal(
-#         key, (total_num_neurons, total_num_neurons + 1)
-#     ) * 0.1
-#     parameter_matrix = parameter_matrix \
-#         .at[:network.num_neurons, :network.num_neurons] \
-#         .set(network.parameter_matrix[:, :-1])
-#     parameter_matrix = parameter_matrix \
-#         .at[:network.num_neurons, -1] \
-#         .set(network.parameter_matrix[:, -1])
-
-#     adjacency_dict = _adjacency_matrix_to_dict(adjacency_matrix)
-#     hidden_activation = network.hidden_activation \
-#         if isinstance(network.hidden_activation, eqx.Module) \
-#         else network.hidden_activation_
-#     output_activation_elem = network.output_activation_elem \
-#         if isinstance(network.output_activation_elem, eqx.Module) \
-#         else network.output_activation_elem_
-
-#     _network = NeuralNetwork(
-#         total_num_neurons,
-#         adjacency_dict,
-#         input_neurons,
-#         output_neurons,
-#         hidden_activation,
-#         output_activation_elem,
-#         network.output_activation_group,
-#         dropout_p,
-#         key=key,
-#         parameter_matrix=parameter_matrix
-#     )
-
-#     new_neuron_ids = jnp.arange(num_new_neurons) + network.num_neurons
-#     return _network, new_neuron_ids.tolist()
-
-
-# def remove_neurons(
-#     network: NeuralNetwork, ids: Sequence[int],
-# ) -> Tuple[NeuralNetwork, Mapping[int, int]]:
-#     """Remove neurons from the network. These can be input, hidden, or output neurons.
-    
-#     **Arguments**:
-    
-#     - `network`: A `NeuralNetwork` object.
-#     - `ids`: A sequence of `int` ids corresponding to the neurons to remove
-#         from the network.
-
-#     **Returns**:
-
-#     A 2-tuple where the first element is the new `NeuralNetwork` with the desired neurons
-#     removed (along with all respective incoming and outgoing connections)
-#     and parameters from original neurons retained, and the second element is
-#     a dictionary mapping neuron ids from the original network to their respective 
-#     ids in the new network.
-#     """
-#     for id in ids:
-#         assert 0 <= id < network.num_neurons, id
-#     ids = jnp.array(ids)
-
-#     id_map = {}
-#     sub = 0
-#     for id in range(network.num_neurons):
-#         if id in ids:
-#             sub += 1
-#         else:
-#             id_map[id] = id - sub
-
-#     # Adjust input and output neurons.
-#     input_neurons = jnp.setdiff1d(network.input_neurons, ids)
-#     output_neurons = jnp.setdiff1d(network.output_neurons, ids)
-#     input_neurons = [id_map[n] for n in input_neurons.tolist()]
-#     output_neurons = [id_map[n] for n in output_neurons.tolist()]
-    
-#     # Adjust adjacency matrix.
-#     adjacency_matrix = network.adjacency_matrix
-#     adjacency_matrix = jnp.delete(adjacency_matrix, ids, 0)
-#     adjacency_matrix = jnp.delete(adjacency_matrix, ids, 1)
-
-#     # Adjust dropout.
-#     keep_original_idx = jnp.array(list(sorted(id_map.keys())), dtype=int)
-#     dropout_p = network.get_dropout_p()
-#     dropout_p = dropout_p[keep_original_idx]
-
-#     # Adjust parameter matrix.
-#     parameter_matrix = network.parameter_matrix
-#     parameter_matrix = jnp.delete(parameter_matrix, ids, 0)
-#     parameter_matrix = jnp.delete(parameter_matrix, ids, 1)
-
-#     adjacency_dict = _adjacency_matrix_to_dict(adjacency_matrix)
-#     hidden_activation = network.hidden_activation \
-#         if isinstance(network.hidden_activation, eqx.Module) \
-#         else network.hidden_activation_
-#     output_activation_elem = network.output_activation_elem \
-#         if isinstance(network.output_activation_elem, eqx.Module) \
-#         else network.output_activation_elem_
-
-#     network = NeuralNetwork(
-#         network.num_neurons - len(ids),
-#         adjacency_dict,
-#         input_neurons,
-#         output_neurons,
-#         hidden_activation,
-#         output_activation_elem,
-#         network.output_activation_group,
-#         dropout_p,
-#         key=eqxe.get_state(network.key, jr.PRNGKey(0)),
-#         parameter_matrix=parameter_matrix
-#     )
-
-#     return network, id_map
-
-
-# def set_dropout_p(network: NeuralNetwork, dropout_p: Union[float, Mapping[Any, float]]) -> None:
-#     """Set the per-neuron dropout probabilities.
-#     """
-#     if isinstance(dropout_p, float):
-#         dropout_p = jnp.ones((self.num_neurons,)) * dropout_p
-#         dropout_p = dropout_p.at[self.input_neurons].set(0.)
-#         dropout_p = dropout_p.at[self.output_neurons].set(0.)
-#     else:
-#         assert isinstance(dropout_p, Mapping)
-#         dropout_p_ = np.array(self.dropout_p)
-#         for (n, d) in dropout_p.items():
-#             dropout_p_[self.neuron_to_id[n]] = d
-#         dropout_p = jnp.array(dropout_p_, dtype=float)
-#     assert jnp.all(jnp.greater_equal(dropout_p, 0))
-#     assert jnp.all(jnp.less_equal(dropout_p, 1))
-#     # TODO: use eqx tree at
-#     self.dropout_p = dropout_p
 
 
 # def contract_cluster(
