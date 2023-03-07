@@ -10,7 +10,7 @@ import jax.numpy as jnp
 import jax.random as jr
 from jax import lax, vmap
 
-from jaxtyping import Array
+from jaxtyping import Array # TODO: possibly use jax native Array?
 
 import networkx as nx
 import numpy as np
@@ -42,8 +42,10 @@ class NeuralNetwork(Module):
     masks: List[Array] = static_field()
     attention_masks_neuron: List[Array] = static_field()
     indices: List[Array] = static_field()
-    input_neurons: Array = static_field()
-    output_neurons: Array = static_field()
+    input_neurons: List[Any] = static_field()
+    output_neurons: List[Any] = static_field()
+    input_neurons_id: Array = static_field()
+    output_neurons_id: Array = static_field()
     num_neurons: int = static_field()
     num_input_neurons: int = static_field()
     num_inputs_per_neuron: Array = static_field()
@@ -156,7 +158,7 @@ class NeuralNetwork(Module):
         dropout_keep = jnp.greater(rand, self.dropout_p)
         
         # Set input values
-        values = values.at[self.input_neurons].set(x * dropout_keep[self.input_neurons])
+        values = values.at[self.input_neurons_id].set(x * dropout_keep[self.input_neurons_id])
 
         # Forward pass in topological batch order
         for (tb, w_and_b, mask, indices, attn_params_t, attn_params_n, attn_mask_n, norm_params, ada_params) in zip(
@@ -193,7 +195,7 @@ class NeuralNetwork(Module):
 
         # Return values pertaining to output neurons, with the group-wise 
         # output activation applied
-        return self.output_transformation(values[self.output_neurons])
+        return self.output_transformation(values[self.output_neurons_id])
 
 
     ##############################################################################
@@ -256,7 +258,7 @@ class NeuralNetwork(Module):
         )
         _expand = ft.partial(jnp.expand_dims, axis=0)
         output = lax.cond(
-            jnp.isin(id, self.output_neurons),
+            jnp.isin(id, self.output_neurons_id),
             lambda: _expand(affine),
             lambda: self.hidden_activation(_expand(affine * gain)) * amplification
         )
@@ -348,10 +350,12 @@ class NeuralNetwork(Module):
         self.topo_sort = list(topo_sort)
         self.num_neurons = len(self.topo_sort)
 
+        self.input_neurons = list(input_neurons)
+        self.output_neurons = list(output_neurons)
         input_neurons = [self.neuron_to_id[n] for n in input_neurons]
         output_neurons = [self.neuron_to_id[n] for n in output_neurons]
-        self.input_neurons = jnp.array(input_neurons, dtype=int)
-        self.output_neurons = jnp.array(output_neurons, dtype=int)
+        self.input_neurons_id = jnp.array(input_neurons, dtype=int)
+        self.output_neurons_id = jnp.array(output_neurons, dtype=int)
 
         # Topological batching
         # See Section 2.2 of https://arxiv.org/pdf/2101.07965.pdf
@@ -400,7 +404,7 @@ class NeuralNetwork(Module):
             raise e
         assert jnp.array_equal(x.shape, y.shape)
 
-        x = jnp.zeros_like(self.output_neurons)
+        x = jnp.zeros_like(self.output_neurons_id)
         try:
             y = output_transformation(x)
         except Exception as e:
@@ -543,8 +547,8 @@ class NeuralNetwork(Module):
         """
         if isinstance(dropout_p, float):
             dropout_p = jnp.ones((self.num_neurons,)) * dropout_p
-            dropout_p = dropout_p.at[self.input_neurons].set(0.)
-            dropout_p = dropout_p.at[self.output_neurons].set(0.)
+            dropout_p = dropout_p.at[self.input_neurons_id].set(0.)
+            dropout_p = dropout_p.at[self.output_neurons_id].set(0.)
         else:
             assert isinstance(dropout_p, Mapping)
             dropout_p_ = np.zeros((self.num_neurons,))

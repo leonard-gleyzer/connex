@@ -1,11 +1,7 @@
-from collections import defaultdict
-import functools as ft
-from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
+from typing import Any, Mapping, Optional, Sequence, Tuple
 
 import equinox as eqx
-import equinox.experimental as eqxe
 
-import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
 
@@ -13,21 +9,21 @@ import networkx as nx
 import numpy as np
 
 from .network import NeuralNetwork
-from .utils import _identity
 
 
 def _get_id_mappings_old_new(
     old_network: NeuralNetwork, new_network: NeuralNetwork
 ) -> Tuple[np.ndarray, np.ndarray]:
+    old_neurons, new_neurons = old_network.graph.nodes, new_network.graph.nodes
     ids_old_to_new = np.empty((old_network.num_neurons,), dtype=int)
-    for neuron in old_network.graph.nodes:
+    for neuron in old_neurons:
         old_id = old_network.neuron_to_id[neuron]
-        new_id = new_network.neuron_to_id[neuron] if neuron in new_network.graph.nodes else -1
+        new_id = new_network.neuron_to_id[neuron] if neuron in new_neurons else -1
         ids_old_to_new[old_id] = new_id
     ids_new_to_old = np.empty((new_network.num_neurons,), dtype=int)
-    for neuron in new_network.graph.nodes:
+    for neuron in new_neurons:
         new_id = new_network.neuron_to_id[neuron]
-        old_id = old_network.neuron_to_id[neuron] if neuron in old_network.graph.nodes else -1
+        old_id = old_network.neuron_to_id[neuron] if neuron in old_neurons else -1
         ids_new_to_old[new_id] = old_id
     return ids_old_to_new, ids_new_to_old
 
@@ -55,8 +51,8 @@ def add_connections(
     parameters retained.
     """
     # Set input and output neurons
-    input_neurons = [network.topo_sort[id] for id in network.input_neurons]
-    output_neurons = [network.topo_sort[id] for id in network.output_neurons]
+    input_neurons = network.input_neurons
+    output_neurons = network.output_neurons
 
     # Check that all new connections are between neurons actually in the network
     # and that no connection have an input neurons as outputs
@@ -235,8 +231,8 @@ def remove_connections(
     parameters retained.
     """
     # Set input and output neurons
-    input_neurons = [network.topo_sort[id] for id in network.input_neurons]
-    output_neurons = [network.topo_sort[id] for id in network.output_neurons]
+    input_neurons = network.input_neurons
+    output_neurons = network.output_neurons
 
     # Check that all new connections are between neurons actually in the network
     existing_neurons = network.graph.nodes
@@ -420,9 +416,9 @@ def add_hidden_neurons(
 
     A `NeuralNetwork` with the new hidden neurons added and parameters from the original network retained.
     """
-    # Set input and output neurons (TODO: idk I don't like this?)
-    input_neurons = [network.topo_sort[id] for id in network.input_neurons]
-    output_neurons = [network.topo_sort[id] for id in network.output_neurons]
+    # Set input and output neurons
+    input_neurons = network.input_neurons
+    output_neurons = network.output_neurons
 
     # Check that none of the new neurons already exist in the network
     existing_neurons = network.graph.nodes
@@ -690,10 +686,9 @@ def add_input_neurons(
 
     A `NeuralNetwork` with the new input neurons added and parameters from the original network retained.
     """
-    # Set input and output neurons (TODO: idk I don't like this?)
-    input_neurons = [network.topo_sort[id] for id in network.input_neurons] + list(new_input_neurons)
-    output_neurons = [network.topo_sort[id] for id in network.output_neurons]
-    num_input_neurons = len(input_neurons)
+    # Set input and output neurons
+    input_neurons = network.input_neurons + list(new_input_neurons)
+    output_neurons = network.output_neurons
 
     # Check that none of the new neurons already exist in the network
     existing_neurons = network.graph.nodes
@@ -853,9 +848,9 @@ def remove_neurons(
         assert not network.adjacency_dict[neuron]
         assert not network.adjacency_dict_inv[neuron]
 
-    # Set input and output neurons (TODO: idk I don't like this?)
-    input_neurons = [network.topo_sort[id] for id in network.input_neurons]
-    output_neurons = [network.topo_sort[id] for id in network.output_neurons]
+    # Set input and output neurons
+    input_neurons = network.input_neurons
+    output_neurons = network.output_neurons
     for neuron in neurons:
         if neuron in input_neurons:
             input_neurons.remove(neuron)
