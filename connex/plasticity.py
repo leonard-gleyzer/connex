@@ -50,6 +50,10 @@ def add_connections(
     A `NeuralNetwork` object with the specified connections added and original
     parameters retained.
     """
+    # If there is nothing to change, return the network as given
+    if len(connections) == 0:
+        return network
+
     # Set input and output neurons
     input_neurons = network.input_neurons
     output_neurons = network.output_neurons
@@ -230,6 +234,10 @@ def remove_connections(
     A `NeuralNetwork` object with the specified connections removed and original
     parameters retained.
     """
+    # If there is nothing to change, return the network as given
+    if len(connections) == 0:
+        return network
+
     # Set input and output neurons
     input_neurons = network.input_neurons
     output_neurons = network.output_neurons
@@ -416,6 +424,10 @@ def add_hidden_neurons(
 
     A `NeuralNetwork` with the new hidden neurons added and parameters from the original network retained.
     """
+    # If there is nothing to change, return the network as given
+    if len(new_hidden_neurons) == 0:
+        return network
+
     # Set input and output neurons
     input_neurons = network.input_neurons
     output_neurons = network.output_neurons
@@ -548,6 +560,10 @@ def add_output_neurons(
 
     A `NeuralNetwork` with the new output neurons added and parameters from the original network retained.
     """
+    # If there is nothing to change, return the network as given
+    if len(new_output_neurons) == 0:
+        return network
+
     # Set input and output neurons (TODO: idk I don't like this?)
     input_neurons = [network.topo_sort[id] for id in network.input_neurons]
     output_neurons = [network.topo_sort[id] for id in network.output_neurons] + list(new_output_neurons)
@@ -686,6 +702,10 @@ def add_input_neurons(
 
     A `NeuralNetwork` with the new input neurons added and parameters from the original network retained.
     """
+    # If there is nothing to change, return the network as given
+    if len(new_input_neurons) == 0:
+        return network
+
     # Set input and output neurons
     input_neurons = network.input_neurons + list(new_input_neurons)
     output_neurons = network.output_neurons
@@ -824,7 +844,7 @@ def remove_neurons(
 
     A `NeuralNetwork` with the specified neurons removed and parameters from the original network retained.
     """
-    # If there are no neurons to remove, simply return the network # TODO: include in other functions
+    # If there is nothing to change, return the network as given
     if len(neurons) == 0:
         return network
 
