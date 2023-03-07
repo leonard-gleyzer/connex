@@ -3,7 +3,7 @@ import functools as ft
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import equinox.experimental as eqxe
-from equinox import Module, filter_jit, static_field
+from equinox import Module, filter_jit, static_field, tree_at
 
 import jax.nn as jnn
 import jax.numpy as jnp
@@ -49,7 +49,8 @@ class NeuralNetwork(Module):
     num_neurons: int = static_field()
     num_input_neurons: int = static_field()
     num_inputs_per_neuron: Array = static_field()
-    dropout_p: Array = static_field()
+    dropout_p: Union[float, Mapping[Any, float]] = static_field()
+    _dropout_p: Array = static_field()
     use_topo_norm: bool = static_field()
     use_topo_self_attention: bool = static_field()
     use_neuron_self_attention: bool = static_field()
@@ -154,8 +155,8 @@ class NeuralNetwork(Module):
 
         # Dropout
         key = self._keygen() if key is None else key
-        rand = jr.uniform(key, self.dropout_p.shape, minval=0, maxval=1)
-        dropout_keep = jnp.greater(rand, self.dropout_p)
+        rand = jr.uniform(key, self._dropout_p.shape, minval=0, maxval=1)
+        dropout_keep = jnp.greater(rand, self._dropout_p)
         
         # Set input values
         values = values.at[self.input_neurons_id].set(x * dropout_keep[self.input_neurons_id])
@@ -546,23 +547,62 @@ class NeuralNetwork(Module):
         """Set the initial per-neuron dropout probabilities.
         """
         if isinstance(dropout_p, float):
-            dropout_p = jnp.ones((self.num_neurons,)) * dropout_p
-            dropout_p = dropout_p.at[self.input_neurons_id].set(0.)
-            dropout_p = dropout_p.at[self.output_neurons_id].set(0.)
+            _dropout_p = jnp.ones((self.num_neurons,)) * dropout_p
+            _dropout_p = _dropout_p.at[self.input_neurons_id].set(0.)
+            _dropout_p = _dropout_p.at[self.output_neurons_id].set(0.)
         else:
             assert isinstance(dropout_p, Mapping)
-            dropout_p_ = np.zeros((self.num_neurons,))
+            _dropout_p = np.zeros((self.num_neurons,))
             for (n, d) in dropout_p.items():
-                dropout_p_[self.neuron_to_id[n]] = d
-            dropout_p = jnp.array(dropout_p_, dtype=float)
-        assert jnp.all(jnp.greater_equal(dropout_p, 0))
-        assert jnp.all(jnp.less_equal(dropout_p, 1))
+                assert n in self.neuron_to_id
+                assert isinstance(d, float)
+                _dropout_p[self.neuron_to_id[n]] = d
+            _dropout_p = jnp.array(_dropout_p, dtype=float)
+        assert jnp.all(jnp.greater_equal(_dropout_p, 0))
+        assert jnp.all(jnp.less_equal(_dropout_p, 1))
+        self._dropout_p = _dropout_p
         self.dropout_p = dropout_p
 
 
     ###################################################
     ################ Public methods. ##################
     ###################################################
+
+    def set_dropout_p(self, dropout_p: Union[float, Mapping[Any, float]]) -> None:
+        """Set the per-neuron dropout probabilities.
+
+        **Arguments:**
+
+        - `dropout_p`: Either a float or mapping from neuron (`Any`) to float. If a single float, 
+            all hidden neurons will have that dropout probability. Input and output neurons will have
+            dropout probability 0 by default. If a `Mapping`, it is assumed that `dropout_p` maps a neuron
+            to its dropout probability, and all unspecified neurons will have dropout probability 0.
+
+        **Returns:**
+
+        A copy of the current network with dropout probabilities as specified. 
+        The original network is left unchanged. 
+        """
+        if isinstance(dropout_p, float):
+            _dropout_p = jnp.ones((self.num_neurons,)) * dropout_p
+            _dropout_p = _dropout_p.at[self.input_neurons_id].set(0.)
+            _dropout_p = _dropout_p.at[self.output_neurons_id].set(0.)
+        else:
+            assert isinstance(dropout_p, Mapping)
+            _dropout_p = np.zeros((self.num_neurons,))
+            for (n, d) in dropout_p.items():
+                assert n in self.neuron_to_id
+                assert isinstance(d, float)
+                _dropout_p[self.neuron_to_id[n]] = d
+            _dropout_p = jnp.array(_dropout_p, dtype=float)
+        assert jnp.all(jnp.greater_equal(_dropout_p, 0))
+        assert jnp.all(jnp.less_equal(_dropout_p, 1))
+        return tree_at(
+            lambda network: (network.dropout_p, network._dropout_p),
+            self,
+            (dropout_p, _dropout_p)
+        )
+
 
     def to_networkx_weighted_digraph(self) -> nx.DiGraph:
         """Returns a `networkx.DiGraph` represention of the network with neuron weights
