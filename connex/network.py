@@ -8,9 +8,7 @@ from equinox import Module, filter_jit, static_field, tree_at
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
-from jax import lax, vmap
-
-from jaxtyping import Array # TODO: possibly use jax native Array?
+from jax import Array, lax, vmap
 
 import networkx as nx
 import numpy as np
@@ -44,19 +42,20 @@ class NeuralNetwork(Module):
     indices: List[Array] = static_field()
     input_neurons: List[Any] = static_field()
     output_neurons: List[Any] = static_field()
+    hidden_neurons: List[Any] = static_field()
     input_neurons_id: Array = static_field()
     output_neurons_id: Array = static_field()
     num_neurons: int = static_field()
     num_input_neurons: int = static_field()
     num_inputs_per_neuron: Array = static_field()
-    dropout_p: Union[float, Mapping[Any, float]] = static_field()
+    dropout_p: Dict[Any, float] = static_field()
     _dropout_p: Array = static_field()
     use_topo_norm: bool = static_field()
     use_topo_self_attention: bool = static_field()
     use_neuron_self_attention: bool = static_field()
     use_adaptive_activations: bool = static_field()
     _hidden_activation: Callable = static_field()
-    key: eqxe.StateIndex = static_field()
+    key_state: eqxe.StateIndex = static_field()
 
     def __init__(
         self,
@@ -113,7 +112,6 @@ class NeuralNetwork(Module):
             Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
         """
         super().__init__(**kwargs)
-        print("Compiling network...")
         self._set_topological_info(graph, input_neurons, output_neurons, topo_sort)
         self._set_activations(hidden_activation, output_transformation)
         self._set_parameters(
@@ -124,7 +122,6 @@ class NeuralNetwork(Module):
             use_adaptive_activations
         )
         self._set_dropout_p(dropout_p)
-        print("Done!")
 
 
     @filter_jit
@@ -162,7 +159,7 @@ class NeuralNetwork(Module):
         values = values.at[self.input_neurons_id].set(x * dropout_keep[self.input_neurons_id])
 
         # Forward pass in topological batch order
-        for (tb, w_and_b, mask, indices, attn_params_t, attn_params_n, attn_mask_n, norm_params, ada_params) in zip(
+        for tb, w_and_b, mask, indices, attn_params_t, attn_params_n, attn_mask_n, norm_params, ada_params in zip(
             self.topo_batches, 
             self.weights_and_biases, 
             self.masks,  
@@ -183,12 +180,11 @@ class NeuralNetwork(Module):
                 vals = self._apply_topo_self_attention(attn_params_t, vals)
             # Neuron-level self-attention
             if self.use_neuron_self_attention:
-                # vals = jnp.tile(vals, (jnp.size(tb), 1))
                 _apply_neuron_self_attention = vmap(self._apply_neuron_self_attention, in_axes=[0, 0, 0, None])
                 vals = _apply_neuron_self_attention(tb, attn_params_n, attn_mask_n, vals)
             # Affine transformation, wx + b
             weights, biases = w_and_b[:, :-1], w_and_b[:, -1]
-            affine = vmap(jnp.dot)(weights * mask, vals) + biases
+            affine = (weights * mask) @ vals + biases
             # Apply activations/dropout
             output_values = vmap(self._apply_activation)(tb, affine, ada_params) * dropout_keep[tb]
             # Set new values
@@ -204,7 +200,7 @@ class NeuralNetwork(Module):
     ##############################################################################
 
     def _apply_topo_norm(self, norm_params: Array, vals: Array) -> Array:
-        """Function for a topo batch to standardize its inputs , followed by a 
+        """Function for a topo batch to standardize its inputs, followed by a 
         learnable elementwise-affine transformation.
         """
         gamma, beta = norm_params
@@ -266,8 +262,8 @@ class NeuralNetwork(Module):
         return jnp.squeeze(output)
 
 
-    def _get_current_key(self) -> jr.PRNGKey:
-        """Get the random key current stored in `self.key_state` (an `eqxe.StateIndex`)
+    def _get_key(self) -> jr.PRNGKey:
+        """Get the random key stored in `self.key_state` (an `eqxe.StateIndex`).
         """
         return eqxe.get_state(self.key_state, jr.PRNGKey(0))
 
@@ -277,7 +273,7 @@ class NeuralNetwork(Module):
         split the key, set `self.key_state` to contain the new key, and return the 
         original key.
         """
-        key = self._get_current_key()
+        key = self._get_key()
         _, new_key = jr.split(key)
         eqxe.set_state(self.key_state, new_key)
         return key
@@ -302,8 +298,7 @@ class NeuralNetwork(Module):
         adjacency_dict_ = nx.to_dict_of_lists(graph)
         for (input, outputs) in adjacency_dict_.items():
             adjacency_dict[neuron_to_id[input]] = [neuron_to_id[o] for o in outputs]
-        self.adjacency_dict = adjacency_dict
-        self.adjacency_dict_inv = _invert_dict(adjacency_dict)
+        adjacency_dict_inv = _invert_dict(adjacency_dict)
         num_inputs_per_neuron = [len(self.adjacency_dict_inv[i]) for i in range(self.num_neurons)]
         self.num_inputs_per_neuron = jnp.array(num_inputs_per_neuron, dtype=float)
 
@@ -348,11 +343,21 @@ class NeuralNetwork(Module):
         self.graph = graph
         # Map a neuron to its `int` id, which is its position in the topo sort
         neuron_to_id = {neuron: id for (id, neuron) in enumerate(topo_sort)}
-        self.topo_sort = list(topo_sort)
-        self.num_neurons = len(self.topo_sort)
+        self.topo_sort = topo_sort
+        self.num_neurons = len(topo_sort)
+        # Set the neuron lists of the adjacency dicts to be in topological order
+        self.adjacency_dict = {
+            neuron: sorted(outputs, key=lambda n: self.neuron_to_id[n])
+            for (neuron, outputs) in adjacency_dict.items()
+        }
+        self.adjacency_dict_inv = {
+            neuron: sorted(inputs, key=lambda n: self.neuron_to_id[n])
+            for (neuron, inputs) in adjacency_dict_inv.items()
+        }
 
         self.input_neurons = list(input_neurons)
         self.output_neurons = list(output_neurons)
+        self.hidden_neurons = self.topo_sort[len(input_neurons):-len(output_neurons)]
         input_neurons = [self.neuron_to_id[n] for n in input_neurons]
         output_neurons = [self.neuron_to_id[n] for n in output_neurons]
         self.input_neurons_id = jnp.array(input_neurons, dtype=int)
@@ -546,7 +551,10 @@ class NeuralNetwork(Module):
     def _set_dropout_p(self, dropout_p: Union[float, Mapping[Any, float]]) -> None:
         """Set the initial per-neuron dropout probabilities.
         """
+        dropout_dict = {neuron: 0. for neuron in self.topo_sort}
         if isinstance(dropout_p, float):
+            for neuron in self.hidden_neurons:
+                dropout_dict[neuron] = dropout_p
             _dropout_p = jnp.ones((self.num_neurons,)) * dropout_p
             _dropout_p = _dropout_p.at[self.input_neurons_id].set(0.)
             _dropout_p = _dropout_p.at[self.output_neurons_id].set(0.)
@@ -557,16 +565,18 @@ class NeuralNetwork(Module):
                 assert n in self.neuron_to_id
                 assert isinstance(d, float)
                 _dropout_p[self.neuron_to_id[n]] = d
+                dropout_dict[neuron] = d
             _dropout_p = jnp.array(_dropout_p, dtype=float)
         assert jnp.all(jnp.greater_equal(_dropout_p, 0))
         assert jnp.all(jnp.less_equal(_dropout_p, 1))
         self._dropout_p = _dropout_p
-        self.dropout_p = dropout_p
+        self.dropout_p = dropout_dict
 
 
-    ###################################################
-    ################ Public methods. ##################
-    ###################################################
+    #####################################################
+    ################## Public methods ###################
+    #####################################################
+
 
     def set_dropout_p(self, dropout_p: Union[float, Mapping[Any, float]]) -> None:
         """Set the per-neuron dropout probabilities.
@@ -576,31 +586,37 @@ class NeuralNetwork(Module):
         - `dropout_p`: Either a float or mapping from neuron (`Any`) to float. If a single float, 
             all hidden neurons will have that dropout probability. Input and output neurons will have
             dropout probability 0 by default. If a `Mapping`, it is assumed that `dropout_p` maps a neuron
-            to its dropout probability, and all unspecified neurons will have dropout probability 0.
+            to its dropout probability, and all unspecified neurons will retain their current dropout probability.
 
         **Returns:**
 
         A copy of the current network with dropout probabilities as specified. 
-        The original network is left unchanged. 
+        The original network (including unspecified dropout probabilities) is left unchanged. 
         """
+        dropout_dict = self.dropout_p
         if isinstance(dropout_p, float):
+            # Set all hidden neurons to have dropout probability `dropout_p`, and 
+            # all input/output neurons to have dropout probability 0.
+            for neuron in self.hidden_neurons:
+                dropout_dict[neuron] = dropout_p
             _dropout_p = jnp.ones((self.num_neurons,)) * dropout_p
             _dropout_p = _dropout_p.at[self.input_neurons_id].set(0.)
             _dropout_p = _dropout_p.at[self.output_neurons_id].set(0.)
         else:
             assert isinstance(dropout_p, Mapping)
-            _dropout_p = np.zeros((self.num_neurons,))
+            _dropout_p = np.array(self._dropout_p)
             for (n, d) in dropout_p.items():
                 assert n in self.neuron_to_id
                 assert isinstance(d, float)
                 _dropout_p[self.neuron_to_id[n]] = d
+                dropout_dict[n] = d
             _dropout_p = jnp.array(_dropout_p, dtype=float)
         assert jnp.all(jnp.greater_equal(_dropout_p, 0))
         assert jnp.all(jnp.less_equal(_dropout_p, 1))
         return tree_at(
             lambda network: (network.dropout_p, network._dropout_p),
             self,
-            (dropout_p, _dropout_p)
+            (dropout_dict, _dropout_p)
         )
 
 

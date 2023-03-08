@@ -78,10 +78,8 @@ def add_connections(
         new_edges = [(input, output) for output in outputs]
         new_graph.add_edges_from(new_edges)
 
-    # Copy dropout info to dict
-    dropout_p = {}
-    for id in network.topo_sort:
-        dropout_p[network.topo_sort[id]] = network.dropout_p[id]
+    # Dropout
+    dropout_p = network.dropout_p
 
     # Update topological sort (reference: https://stackoverflow.com/a/24764451)
     def _add_edge_rec(topo_sort, input, output, visited={}):
@@ -104,7 +102,7 @@ def add_connections(
             topo_sort, _ = _add_edge_rec(topo_sort, input, output)
 
     # Random key
-    key = key if key is not None else network._get_current_key()
+    key = key if key is not None else network._get_key()
 
     # Create new network
     new_network = NeuralNetwork(
@@ -260,10 +258,8 @@ def remove_connections(
         edges_to_remove = [(input, output) for output in outputs]
         new_graph.remove_edges_from(edges_to_remove)
 
-    # Copy dropout info to dict
-    dropout_p = {}
-    for id in network.topo_sort:
-        dropout_p[network.topo_sort[id]] = network.dropout_p[id]
+    # Dropout
+    dropout_p = network.dropout_p
 
     # Update topological sort
     topo_sort = network.topo_sort
@@ -279,14 +275,12 @@ def remove_connections(
     # Add each of them back in immediately after the neuron with the greatest
     # topological index that exists as one of the removed neuron's inputs
     for output in unique_outputs:
-        # TODO: topo_sort this info within the dict in network?
-        max_input_idx = max(map(network.neuron_to_id.get, neuron_inputs[output]))
-        neuron = network.topo_sort[max_input_idx]
-        neuron_idx = topo_sort.index(neuron) # TODO: this seems inefficient
+        neuron = neuron_inputs[output][-1]
+        neuron_idx = network.neuron_to_id[neuron]
         topo_sort.insert(neuron_idx + 1, output)
 
     # Get the current network key
-    network_key = network._get_current_key()
+    network_key = network._get_key()
 
     # Create new network
     new_network = NeuralNetwork(
@@ -306,10 +300,9 @@ def remove_connections(
 
     ids_old_to_new, ids_new_to_old = _get_id_mappings_old_new(old_network, new_network)
     assert np.all(ids_old_to_new) >= 0
-    assert np.app(ids_new_to_old) >= 0
+    assert np.all(ids_new_to_old) >= 0
     # Copy neuron parameters and attention parameters
-    _jnp_to_np = lambda lst: list(map(np.array, lst))
-    new_weights_and_biases = _jnp_to_np(new_network.weights_and_biases) # TODO: idk which I like more
+    new_weights_and_biases = [np.array(w) for w in new_network.weights_and_biases]
     new_attention_params_neuron = [np.array(w) for w in new_network.attention_params_neuron]
     new_attention_params_topo = [np.array(w) for w in new_network.attention_params_topo]
     new_topo_norm_params = [np.array(w) for w in new_network.topo_norm_params]
@@ -446,10 +439,8 @@ def add_hidden_neurons(
     new_graph = nx.DiGraph(network.graph)
     new_graph.add_nodes_from(new_hidden_neurons)
 
-    # Copy dropout info to dict (TODO: idk I don't like this?)
-    dropout_p = {}
-    for id in network.topo_sort:
-        dropout_p[network.topo_sort[id]] = network.dropout_p[id]
+    # Dropout
+    dropout_p = network.dropout_p
 
     # Update topological sort
     topo_sort = network.topo_sort
@@ -460,7 +451,7 @@ def add_hidden_neurons(
     topo_sort = topo_sort[:-num_output_neurons] + list(new_hidden_neurons) + output_neurons
 
     # Random key
-    key = key if key is not None else network._get_current_key()
+    key = key if key is not None else network._get_key()
 
     # Create new network
     new_network = NeuralNetwork(
@@ -564,9 +555,8 @@ def add_output_neurons(
     if len(new_output_neurons) == 0:
         return network
 
-    # Set input and output neurons (TODO: idk I don't like this?)
-    input_neurons = [network.topo_sort[id] for id in network.input_neurons]
-    output_neurons = [network.topo_sort[id] for id in network.output_neurons] + list(new_output_neurons)
+    input_neurons = network.input_neurons
+    output_neurons = network.output_neurons + list(new_output_neurons)
     num_output_neurons = len(output_neurons)
 
     # Check that none of the new neurons already exist in the network
@@ -583,17 +573,15 @@ def add_output_neurons(
     new_graph = nx.DiGraph(network.graph)
     new_graph.add_nodes_from(new_output_neurons)
 
-    # Copy dropout info to dict (TODO: idk I don't like this?)
-    dropout_p = {}
-    for id in network.topo_sort:
-        dropout_p[network.topo_sort[id]] = network.dropout_p[id]
+    # Dropout
+    dropout_p = network.dropout_p
 
     # Update topological sort, appending the new output neurons to the end 
     # of the output neuron list
     topo_sort = network.topo_sort + list(new_output_neurons)
 
     # Random key
-    key = key if key is not None else network._get_current_key()
+    key = key if key is not None else network._get_key()
 
     # Create new network
     new_network = NeuralNetwork(
@@ -724,10 +712,8 @@ def add_input_neurons(
     new_graph = nx.DiGraph(network.graph)
     new_graph.add_nodes_from(new_input_neurons)
 
-    # Copy dropout info to dict (TODO: idk I don't like this?)
-    dropout_p = {}
-    for id in network.topo_sort:
-        dropout_p[network.topo_sort[id]] = network.dropout_p[id]
+    # Dropout
+    dropout_p = network.dropout_p
 
     # Update topological sort, appending the new input neurons to the end of the input neuron list
     topo_sort = network.topo_sort
@@ -735,7 +721,7 @@ def add_input_neurons(
     topo_sort = first + list(new_input_neurons) + rest
 
     # Random key
-    key = key if key is not None else network._get_current_key()
+    key = key if key is not None else network._get_key()
 
     # Create new network
     new_network = NeuralNetwork(
@@ -859,14 +845,9 @@ def remove_neurons(
         edges_to_remove[neuron] = network.adjacency_dict[neuron]
         incoming_neurons = network.adjacency_dict_inv[neuron]
         for in_neuron in incoming_neurons:
-            edges_to_remove[in_neuron] = [neuron] # TODO: I don't like this
+            edges_to_remove[in_neuron] = [neuron]
 
     network = remove_connections(network, edges_to_remove)
-    
-    # Sanity check that the connections have actually been removed TODO: move to test?
-    for neuron in neurons:
-        assert not network.adjacency_dict[neuron]
-        assert not network.adjacency_dict_inv[neuron]
 
     # Set input and output neurons
     input_neurons = network.input_neurons
@@ -886,10 +867,8 @@ def remove_neurons(
     new_graph = nx.DiGraph(network.graph)
     new_graph.remove_nodes_from(neurons)
 
-    # Copy dropout info to dict (TODO: idk I don't like this?)
-    dropout_p = {}
-    for id in network.topo_sort:
-        dropout_p[network.topo_sort[id]] = network.dropout_p[id]
+    # Dropout
+    dropout_p = network.dropout_p
 
     # Update topological sort
     topo_sort = network.topo_sort
@@ -897,7 +876,7 @@ def remove_neurons(
         topo_sort.remove(neuron)
 
     # Random key
-    key = network._get_current_key()
+    key = network._get_key()
 
     # Create new network
     new_network = NeuralNetwork(
@@ -945,7 +924,6 @@ def remove_neurons(
         assert intersection_old.size > 0
 
         # Re-order the values of `intersection_old` to reflect the order in `input_indices_old`
-        # TODO: Maybe this is unnecessary since the remaining topological order after removal of isolated neurons is unaffected?
         intersection_old = input_indices_old[np.in1d(input_indices_old, intersection_old)]
         intersection_old_ = intersection_old - min_old
         intersection_new = ids_old_to_new[intersection_old]
@@ -1009,11 +987,3 @@ def remove_neurons(
             new_adaptive_activation_params
         )
     )
-
-
-# def contract_cluster(
-#     network: NeuralNetwork, 
-#     neurons: Sequence[Hashable], 
-#     contract_fn: Callable = jnp.max,
-# ) -> NeuralNetwork:
-#     pass
