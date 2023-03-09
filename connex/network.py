@@ -92,7 +92,7 @@ class NeuralNetwork(Module):
             `dropout_p[i]` refers to the dropout probability of neuron `i`. All neurons default 
             to zero unless otherwise specified. Note that this allows dropout to be applied to 
             input and output neurons as well.
-        - `use_topo_norm`: A `bool` indicating whether to apply a topo batch version of [Layer Norm](),
+        - `use_topo_norm`: A `bool` indicating whether to apply a topo batch version of [Layer Norm](https://arxiv.org/abs/1607.06450),
             where the collective inputs of each topological batch are normalized, with learnable 
             elementwise-affine parameters `gamma` and `beta`.
         - `use_topo_self_attention`: A `bool` indicating whether to apply self-attention to each topological 
@@ -577,6 +577,176 @@ class NeuralNetwork(Module):
     ################## Public methods ###################
     #####################################################
 
+
+    def enable_neuron_self_attention(
+        self, *, key: Optional[jr.PRNGKey] = None
+    ) -> "NeuralNetwork":
+        """Enable the network to use neuron-level self-attention, where each neuron has
+        its own unique (single-headed) self-attention module for its inputs.
+
+        **Arguments:**
+
+        - `key`: A `jax.random.PRNGKey` for the initialization of the attention parameters.
+            Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
+
+        **Returns:**
+
+        A copy of the current network with new trainable neuron-level self-attention parameters.
+        If the network already has neuron-level self-attention enabled, a copy of the network is
+        returned without modifications.
+        
+        Note that if `disable_neuron_self_attention` had previously been called, those parameters
+        were wiped out and so the new self-attention parameters will _not_ revert to the parameters
+        prior to the call to `disable_neuron_self_attention`.
+        """
+        pass
+
+
+    def disable_neuron_self_attention(self) -> "NeuralNetwork":
+        """Disable the network from using neuron-level self-attention, where each neuron has
+        its own unique (single-headed) self-attention module for its inputs.
+
+        **Returns:**
+
+        A copy of the current network with neuron-level self-attention parameters removed.
+        If the network already has neuron-level self-attention disabled, a copy of the network is
+        returned without modifications.
+        
+        Note that this function wipes out the neuron-level self-attention parameters to minimize unnecessary memory use. 
+        If this function is called, followed by `enable_neuron_level_self_attention`, those parameters will not revert to
+        what they previously were.
+        """
+        pass
+
+
+    def enable_topo_self_attention(
+        self, *, key: Optional[jr.PRNGKey] = None
+    ) -> "NeuralNetwork":
+        """Enable the network to use topological-level self-attention, where (TODO: multi-head?) self-attention 
+        is applied to each topological batch's collective inputs prior to undergoing an affine (linear) transformation.
+
+        **Arguments:**
+
+        - `key`: A `jax.random.PRNGKey` for the initialization of the attention parameters.
+            Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
+
+        **Returns:**
+
+        A copy of the current network with new trainable topological-level self-attention parameters.
+        If the network already has topological-level self-attention enabled, a copy of the network is
+        returned without modifications.
+        
+        Note that if `disable_topo_self_attention` had previously been called, those parameters
+        were wiped out and so the new self-attention parameters will _not_ revert to the parameters
+        prior to the call to `disable_topo_self_attention`.
+        """
+        pass
+
+
+    def disable_topo_self_attention(self) -> "NeuralNetwork":
+        """Disable the network from using topological-level self-attention, where (TODO: mh?) self-attention is
+        applied to each topological batch's collective inputs.
+
+        **Returns:**
+
+        A copy of the current network with topological-level self-attention parameters removed.
+        If the network already has topological-level self-attention disabled, a copy of the network is
+        returned without modifications.
+        
+        Note that this function wipes out the topological-level self-attention parameters to minimize unnecessary memory use. 
+        If this function is called, followed by `enable_topological_level_self_attention`, those parameters will not revert to
+        what they previously were.
+        """
+        pass
+
+
+    def enable_topo_norm(
+        self, *, key: Optional[jr.PRNGKey] = None
+    ) -> "NeuralNetwork":
+        """Enable the network to use "Topo Norm", which is the equivalent of [Layer Norm](https://arxiv.org/abs/1607.06450) but for topological batches.
+        More specifically, each topological batch's collective inputs are standardized (centered and rescaled), followed by a
+        learnable element-wise affine transformation. This occurs before any further processing of the topolical batch (e.g. attention, 
+        affine transformation).
+
+        **Arguments:**
+
+        - `key`: A `jax.random.PRNGKey` for the initialization of the Topo Norm parameters.
+            Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
+
+        **Returns:**
+
+        A copy of the current network with new trainable Topo Norm parameters.
+        If the network already has Topo Norm, a copy of the network is
+        returned without modifications.
+        
+        Note that if `disable_topo_norm` had previously been called, those parameters
+        were wiped out and so the new Topo Norm parameters will _not_ revert to the parameters
+        prior to the call to `disable_topo_norm`.
+        """
+        pass
+
+
+    def disable_topo_norm(self) -> "NeuralNetwork":
+        """Disable the network from using "Topo Norm", which is the equivalent of [Layer Norm](https://arxiv.org/abs/1607.06450) but for topological batches.
+        More specifically, with Topo Norm enabled, each topological batch's collective inputs are standardized (centered and rescaled), followed by a
+        learnable element-wise affine transformation. This occurs before any further processing of the topolical batch (e.g. attention, 
+        affine transformation).
+
+        **Returns:**
+
+        A copy of the current network with Topo Norm parameters removed.
+        If the network already has Topo Norm disabled, a copy of the network is
+        returned without modifications.
+        
+        Note that this function wipes out the Topo Norm parameters to minimize unnecessary memory use. 
+        If this function is called, followed by `enable_topo_norm`, those parameters will not revert to
+        what they previously were.
+        """
+        pass
+
+
+    def enable_adaptive_activations(
+        self, *, key: Optional[jr.PRNGKey] = None
+    ) -> "NeuralNetwork":
+        """Enable the network to use [adaptive activations](https://arxiv.org/abs/1909.12228), where all hidden activations
+        undergo `σ(x) -> a * σ(b * x)`, where `a`, `b` are trainable scalar parameters 
+        unique to each neuron.
+
+        **Arguments:**
+
+        - `key`: A `jax.random.PRNGKey` for the initialization of the adaptive activation parameters.
+            Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
+
+        **Returns:**
+
+        A copy of the current network with new trainable adaptive activation parameters.
+        If the network already has adaptive activations, a copy of the network is
+        returned without modifications.
+        
+        Note that if `disable_adaptive activations` had previously been called, those parameters
+        were wiped out and so the new adaptive activation parameters will _not_ revert to the parameters
+        prior to the call to `disable_adaptive_activations`.
+        """
+        pass
+
+
+    def disable_adaptive_activations(self) -> "NeuralNetwork":
+        """Disable the network from using [adaptive activations](https://arxiv.org/abs/1909.12228), where all hidden activations
+        undergo `σ(x) -> a * σ(b * x)`, where `a`, `b` are trainable scalar parameters 
+        unique to each neuron.
+
+        **Returns:**
+
+        A copy of the current network with adaptive activation parameters removed.
+        If the network already has adaptive activation disabled, a copy of the network is
+        returned without modifications.
+        
+        Note that this function wipes out the adaptive activation parameters to minimize unnecessary memory use. 
+        If this function is called, followed by `enable_adaptive_activations`, those parameters will not revert to
+        what they previously were.
+        """
+        pass
+    
 
     def set_dropout_p(self, dropout_p: Union[float, Mapping[Any, float]]) -> None:
         """Set the per-neuron dropout probabilities.
