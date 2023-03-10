@@ -32,6 +32,8 @@ class NeuralNetwork(Module):
     adjacency_dict_inv: Dict[int, List[int]] = static_field()
     neuron_to_id: Dict[Any, int] = static_field()
     topo_batches: List[Array] = static_field()
+    topo_lengths: np.ndarray = static_field()
+    topo_sizes: List[int] = static_field()
     num_topo_batches: int = static_field()
     neuron_to_topo_batch_idx: Dict[int, Tuple[int, int]] = static_field()
     topo_sort: List[Any] = static_field()
@@ -468,6 +470,8 @@ class NeuralNetwork(Module):
         *wbkeys, key = jr.split(key, self.num_topo_batches + 1)
         topo_lengths = self.max_index - self.min_index + 1
         topo_sizes = [jnp.size(tb) for tb in self.topo_batches]
+        self.topo_lengths = topo_lengths
+        self.topo_sizes = topo_sizes
         self.weights_and_biases = [
             jr.normal(wbkeys[i], (topo_sizes[i], topo_lengths[i] + 1)) * 0.1
             for i in range(self.num_topo_batches)
@@ -577,6 +581,13 @@ class NeuralNetwork(Module):
     ################## Public methods ###################
     #####################################################
 
+    def copy(self) -> "NeuralNetwork":
+        """**Returns:**
+
+        A copy of the network with no modifications.
+        """
+        return tree_at(lambda net: net.num_neurons, self, self.num_neurons)
+
 
     def enable_neuron_self_attention(
         self, *, key: Optional[jr.PRNGKey] = None
@@ -599,7 +610,40 @@ class NeuralNetwork(Module):
         were wiped out and so the new self-attention parameters will _not_ revert to the parameters
         prior to the call to `disable_neuron_self_attention`.
         """
-        pass
+        # If already enabled, return a copy of the network
+        if self.use_neuron_self_attention:
+            return self.copy()
+
+        # Random key
+        key = key if key is not None else jr.PRNGKey(0)
+
+        # Parameters and masks for neuron-wise self-attention
+        *akeys, key = jr.split(key, self.num_topo_batches + 1)
+        attention_params_neuron = [
+            jr.normal(
+                akeys[i], (self.topo_sizes[i], 3, self.topo_lengths[i], self.topo_lengths[i] + 1)
+            ) * 0.1 
+            for i in range(self.num_topo_batches)
+        ]
+        outer_product = vmap(lambda x: jnp.outer(x, x))
+        mask_fn = filter_jit(lambda m: jnp.where(outer_product(m), 0, jnp.inf))
+        attention_masks_neuron = [mask_fn(mask) for mask in self.masks]
+
+        # Set parameters and return
+        return tree_at(
+            lambda network: 
+            (
+                network.use_neuron_self_attention,
+                network.attention_params_neuron,
+                network.attention_masks_neuron
+            ),
+            self,
+            (
+                True,
+                attention_params_neuron,
+                attention_masks_neuron
+            )
+        )
 
 
     def disable_neuron_self_attention(self) -> "NeuralNetwork":
@@ -612,11 +656,24 @@ class NeuralNetwork(Module):
         If the network already has neuron-level self-attention disabled, a copy of the network is
         returned without modifications.
         
-        Note that this function wipes out the neuron-level self-attention parameters to minimize unnecessary memory use. 
+        Note that this function wipes out the neuron-level self-attention parameters (on the returned copy) to minimize unnecessary memory use. 
         If this function is called, followed by `enable_neuron_level_self_attention`, those parameters will not revert to
         what they previously were.
         """
-        pass
+        # If already disabled, return a copy of the network
+        if not self.use_neuron_self_attention:
+            return self.copy()
+
+        # Return copy of network with neuron-level self-attention parameters wiped out
+        return tree_at(
+            lambda network: (
+                network.use_neuron_self_attention,
+                network.attention_params_neuron,
+                network.attention_masks_neuron
+            ),
+            self,
+            (False, [jnp.nan], [jnp.nan])
+        )
 
 
     def enable_topo_self_attention(
@@ -640,7 +697,31 @@ class NeuralNetwork(Module):
         were wiped out and so the new self-attention parameters will _not_ revert to the parameters
         prior to the call to `disable_topo_self_attention`.
         """
-        pass
+        # If already enabled, return a copy of the network
+        if self.use_topo_self_attention:
+            return self.copy()
+
+        # Random key
+        key = key if key is not None else jr.PRNGKey(0)
+
+        # Parameters for topological-level self-attention
+        *akeys, key = jr.split(key, self.num_topo_batches + 1)
+        attention_params_topo = [
+            jr.normal(
+                akeys[i], (3, self.topo_lengths[i], self.topo_lengths[i] + 1)
+            ) * 0.1 
+            for i in range(self.num_topo_batches)
+        ]
+
+        # Set parameters and return
+        return tree_at(
+            lambda network: (
+                network.use_topo_self_attention,
+                network.attention_params_topo
+            ),
+            self,
+            (True, attention_params_topo)
+        )
 
 
     def disable_topo_self_attention(self) -> "NeuralNetwork":
@@ -653,11 +734,23 @@ class NeuralNetwork(Module):
         If the network already has topological-level self-attention disabled, a copy of the network is
         returned without modifications.
         
-        Note that this function wipes out the topological-level self-attention parameters to minimize unnecessary memory use. 
+        Note that this function wipes out the topological-level self-attention parameters (on the returned copy) to minimize unnecessary memory use. 
         If this function is called, followed by `enable_topological_level_self_attention`, those parameters will not revert to
         what they previously were.
         """
-        pass
+        # If already disabled, return a copy of the network
+        if not self.use_topo_self_attention:
+            return self.copy()
+
+        # Return copy of network with topological-level self-attention parameters wiped out
+        return tree_at(
+            lambda network: (
+                network.use_topo_self_attention,
+                network.attention_params_topo
+            ),
+            self,
+            (False, [jnp.nan])
+        )
 
 
     def enable_topo_norm(
@@ -683,7 +776,29 @@ class NeuralNetwork(Module):
         were wiped out and so the new Topo Norm parameters will _not_ revert to the parameters
         prior to the call to `disable_topo_norm`.
         """
-        pass
+        # If already enabled, return a copy of the network
+        if self.use_topo_norm:
+            return self.copy()
+
+        # Random key
+        key = key if key is not None else jr.PRNGKey(0)
+
+        # Parameters for Topo Norm
+        *nkeys, key = jr.split(key, self.num_topo_batches + 1)
+        topo_norm_params = [
+            jr.normal(nkeys[i], (2, self.topo_lengths[i])) * 0.1 + 1 
+            for i in range(self.num_topo_batches)
+        ]
+
+        # Set parameters and return
+        return tree_at(
+            lambda network: (
+                network.use_topo_norm,
+                network.topo_norm_params
+            ),
+            self,
+            (True, topo_norm_params)
+        )
 
 
     def disable_topo_norm(self) -> "NeuralNetwork":
@@ -698,11 +813,23 @@ class NeuralNetwork(Module):
         If the network already has Topo Norm disabled, a copy of the network is
         returned without modifications.
         
-        Note that this function wipes out the Topo Norm parameters to minimize unnecessary memory use. 
+        Note that this function wipes out the Topo Norm parameters (on the returned copy) to minimize unnecessary memory use. 
         If this function is called, followed by `enable_topo_norm`, those parameters will not revert to
         what they previously were.
         """
-        pass
+        # If already disabled, return a copy of the network
+        if not self.use_topo_norm:
+            return self.copy()
+
+        # Return copy of network with Topo Norm parameters wiped out
+        return tree_at(
+            lambda network: (
+                network.use_topo_norm,
+                network.topo_norm_params
+            ),
+            self,
+            (False, [jnp.nan])
+        )
 
 
     def enable_adaptive_activations(
@@ -727,8 +854,29 @@ class NeuralNetwork(Module):
         were wiped out and so the new adaptive activation parameters will _not_ revert to the parameters
         prior to the call to `disable_adaptive_activations`.
         """
-        pass
+        # If already enabled, return a copy of the network
+        if self.use_adaptive_activations:
+            return self.copy()
 
+        # Random key
+        key = key if key is not None else jr.PRNGKey(0)
+
+        # Parameters for adaptive activations
+        akeys = jr.split(key, self.num_topo_batches)
+        adaptive_activation_params = [
+            jr.normal(akeys[i], (self.topo_sizes[i], 2)) * 0.1 + 1
+            for i in range(self.num_topo_batches)
+        ]
+
+        # Set parameters and return
+        return tree_at(
+            lambda network: (
+                network.use_adaptive_activations,
+                network.adaptive_activation_params
+            ),
+            self,
+            (True, adaptive_activation_params)
+        )
 
     def disable_adaptive_activations(self) -> "NeuralNetwork":
         """Disable the network from using [adaptive activations](https://arxiv.org/abs/1909.12228), where all hidden activations
@@ -741,11 +889,23 @@ class NeuralNetwork(Module):
         If the network already has adaptive activation disabled, a copy of the network is
         returned without modifications.
         
-        Note that this function wipes out the adaptive activation parameters to minimize unnecessary memory use. 
+        Note that this function wipes out the adaptive activation parameters (on the returned copy) to minimize unnecessary memory use. 
         If this function is called, followed by `enable_adaptive_activations`, those parameters will not revert to
         what they previously were.
         """
-        pass
+        # If already disabled, return a copy of the network
+        if not self.use_adaptive_activations:
+            return self.copy()
+
+        # Return copy of network with adaptive activation parameters wiped out
+        return tree_at(
+            lambda network: (
+                network.use_adaptive_activations,
+                network.adaptive_activation_params
+            ),
+            self,
+            (False, [jnp.nan])
+        )
     
 
     def set_dropout_p(self, dropout_p: Union[float, Mapping[Any, float]]) -> None:
