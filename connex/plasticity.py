@@ -43,7 +43,7 @@ def add_connections(
         NetworkX id) to its new outgoing connections. Connections that already 
         exist are ignored.
     - `key`: The `jax.random.PRNGKey` used for new weight initialization. 
-        Optional, keyword-only argument. Defaults to the key stored in `network.key_state`.
+        Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
 
     **Returns:**
 
@@ -54,23 +54,23 @@ def add_connections(
     if len(connections) == 0:
         return network
 
-    # Set input and output neurons
-    input_neurons = network.input_neurons
-    output_neurons = network.output_neurons
-
     # Check that all new connections are between neurons actually in the network
-    # and that no connection have an input neurons as outputs
+    # and that no neuron outputs to an input neuron
     existing_neurons = network.graph.nodes
     for input, outputs in connections.items():
-        assert input in existing_neurons, input
+        if input not in existing_neurons:
+            raise ValueError(f"Neuron {input} does not exist in the network.")
         for output in outputs:
-            assert output in existing_neurons, f"Neuron {output} does not exist in the network."
-            assert output not in input_neurons, f"Cannot add connection to input neuron {output}."
-
-    # Set element-wise activations
-    hidden_activation = network.hidden_activation \
-        if isinstance(network.hidden_activation, eqx.Module) \
-        else network._hidden_activation
+            if output not in existing_neurons:
+                raise ValueError(f"Neuron {output} does not exist in the network.")
+            if output in network.input_neurons:
+                raise ValueError(
+                    f"""
+                    Input neurons cannot receive output from other neurons.
+                    The neuron in this case was neuron {input} attempting to 
+                    add a connection to input neuron {output}.
+                    """
+                )
 
     # Update connectivity information
     new_graph = nx.DiGraph(network.graph)
@@ -78,17 +78,15 @@ def add_connections(
         new_edges = [(input, output) for output in outputs]
         new_graph.add_edges_from(new_edges)
 
-    # Dropout
-    dropout_p = network.dropout_p
-
     # Update topological sort (reference: https://stackoverflow.com/a/24764451)
     def _add_edge_rec(topo_sort, input, output, visited={}):
         input_index = topo_sort.index(input)
         output_index = topo_sort.index(output)
-        assert input_index != output_index, "Input and output cannot be the same"
+        assert input_index != output_index
         if input_index < output_index:
             return topo_sort, visited
-        assert output not in visited, f"Edge ({input}, {output}) creates a cycle"
+        if output in visited:
+            raise ValueError(f"Edge ({input}, {output}) creates a cycle.")
         topo_sort.remove(output)
         topo_sort.insert(input_index, output)
         visited.add(output)
@@ -102,27 +100,27 @@ def add_connections(
             topo_sort, _ = _add_edge_rec(topo_sort, input, output)
 
     # Random key
-    key = key if key is not None else network._get_key()
+    key = key if key is not None else jr.PRNGKey(0)
 
     # Create new network
     new_network = NeuralNetwork(
-        graph=new_graph,
-        input_neurons=input_neurons,
-        output_neurons=output_neurons,
-        hidden_activation=hidden_activation,
-        output_activation=network.output_transformation,
-        dropout_p=dropout_p,
-        use_topo_norm=network.use_topo_norm,
-        use_topo_self_attention=network.use_topo_self_attention,
-        use_neuron_self_attention=network.use_neuron_self_attention,
-        use_adaptive_activations=network.use_adaptive_activations,
+        new_graph,
+        network.input_neurons,
+        network.output_neurons,
+        network.hidden_activation,
+        network.output_transformation,
+        network.dropout_p,
+        network.use_topo_norm,
+        network.use_topo_self_attention,
+        network.use_neuron_self_attention,
+        network.use_adaptive_activations,
         topo_sort=topo_sort,
         key=key
     )
 
     ids_old_to_new, ids_new_to_old = _get_id_mappings_old_new(old_network, new_network)
-    assert np.all(ids_old_to_new) >= 0
-    assert np.app(ids_new_to_old) >= 0
+    assert np.all(ids_old_to_new >= 0)
+    assert np.app(ids_new_to_old >= 0)
     # Copy neuron parameters and attention parameters
     new_weights_and_biases = [np.array(w) for w in new_network.weights_and_biases]
     new_attention_params_neuron = [np.array(w) for w in new_network.attention_params_neuron]
@@ -236,30 +234,20 @@ def remove_connections(
     if len(connections) == 0:
         return network
 
-    # Set input and output neurons
-    input_neurons = network.input_neurons
-    output_neurons = network.output_neurons
-
     # Check that all new connections are between neurons actually in the network
     existing_neurons = network.graph.nodes
     for input, outputs in connections.items():
-        assert input in existing_neurons, input
+        if input not in existing_neurons:
+            raise ValueError(f"Neuron {input} does not exist in the network.")
         for output in outputs:
-            assert output in existing_neurons, f"Neuron {output} does not exist in the network."
-
-    # Set element-wise activations
-    hidden_activation = network.hidden_activation \
-        if isinstance(network.hidden_activation, eqx.Module) \
-        else network._hidden_activation
+            if output not in existing_neurons:
+                raise ValueError(f"Neuron {output} does not exist in the network.")
 
     # Update connectivity information
     new_graph = nx.DiGraph(network.graph)
     for (input, outputs) in connections.items():
         edges_to_remove = [(input, output) for output in outputs]
         new_graph.remove_edges_from(edges_to_remove)
-
-    # Dropout
-    dropout_p = network.dropout_p
 
     # Update topological sort
     topo_sort = network.topo_sort
@@ -284,16 +272,16 @@ def remove_connections(
 
     # Create new network
     new_network = NeuralNetwork(
-        graph=new_graph,
-        input_neurons=input_neurons,
-        output_neurons=output_neurons,
-        hidden_activation=hidden_activation,
-        output_activation=network.output_transformation,
-        dropout_p=dropout_p,
-        use_topo_norm=network.use_topo_norm,
-        use_topo_self_attention=network.use_topo_self_attention,
-        use_neuron_self_attention=network.use_neuron_self_attention,
-        use_adaptive_activations=network.use_adaptive_activations,
+        new_graph,
+        network.input_neurons,
+        network.output_neurons,
+        network.hidden_activation,
+        network.output_transformation,
+        network.dropout_p,
+        network.use_topo_norm,
+        network.use_topo_self_attention,
+        network.use_neuron_self_attention,
+        network.use_adaptive_activations,
         topo_sort=topo_sort,
         key=network_key
     )
@@ -411,7 +399,7 @@ def add_hidden_neurons(
         exist in the network. These must also specifically be hidden neurons. To add input or 
         output neurons, use `cnx.add_input_neurons` or `cnx.add_output_neurons`.
     - `key`: The `jax.random.PRNGKey` used for new parameter initialization. 
-        Optional, keyword-only argument. Defaults to the key saved in `network.key_state`.
+        Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
 
     **Returns:**
 
@@ -421,50 +409,39 @@ def add_hidden_neurons(
     if len(new_hidden_neurons) == 0:
         return network
 
-    # Set input and output neurons
-    input_neurons = network.input_neurons
-    output_neurons = network.output_neurons
-
     # Check that none of the new neurons already exist in the network
     existing_neurons = network.graph.nodes
     for neuron in new_hidden_neurons:
-        assert neuron not in existing_neurons, neuron
-
-    # Set element-wise activations
-    hidden_activation = network.hidden_activation \
-        if isinstance(network.hidden_activation, eqx.Module) \
-        else network._hidden_activation
+        if neuron in existing_neurons:
+            raise ValueError(f"Neuron {neuron} already exists in the network.")
 
     # Update graph information
     new_graph = nx.DiGraph(network.graph)
     new_graph.add_nodes_from(new_hidden_neurons)
 
-    # Dropout
-    dropout_p = network.dropout_p
-
     # Update topological sort
     topo_sort = network.topo_sort
-    num_output_neurons = len(output_neurons)
+    num_output_neurons = len(network.output_neurons)
     # It doesn't really matter where in a topological sort new isolated nodes are added, 
     # it still remains a valid topological sort. We add them right before the output neurons
     # to make it easier to keep track of indices when copying parameters over.
-    topo_sort = topo_sort[:-num_output_neurons] + list(new_hidden_neurons) + output_neurons
+    topo_sort = topo_sort[:-num_output_neurons] + list(new_hidden_neurons) + network.output_neurons
 
     # Random key
-    key = key if key is not None else network._get_key()
+    key = key if key is not None else jr.PRNGKey(0)
 
     # Create new network
     new_network = NeuralNetwork(
-        graph=new_graph,
-        input_neurons=input_neurons,
-        output_neurons=output_neurons,
-        hidden_activation=hidden_activation,
-        output_activation=network.output_transformation,
-        dropout_p=dropout_p,
-        use_topo_norm=network.use_topo_norm,
-        use_topo_self_attention=network.use_topo_self_attention,
-        use_neuron_self_attention=network.use_neuron_self_attention,
-        use_adaptive_activations=network.use_adaptive_activations,
+        new_graph,
+        network.input_neurons,
+        network.output_neurons,
+        network.hidden_activation,
+        network.output_transformation,
+        network.dropout_p,
+        network.use_topo_norm,
+        network.use_topo_self_attention,
+        network.use_neuron_self_attention,
+        network.use_adaptive_activations,
         topo_sort=topo_sort,
         key=key
     )
@@ -545,7 +522,7 @@ def add_output_neurons(
         exist in the network. These must also specifically be output neurons. To add input or 
         output neurons, use `cnx.add_input_neurons` or `cnx.add_output_neurons`.
     - `key`: The `jax.random.PRNGKey` used for new parameter initialization. 
-        Optional, keyword-only argument. Defaults to the key saved in `network.key_state`.
+        Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
 
     **Returns:**
 
@@ -555,46 +532,39 @@ def add_output_neurons(
     if len(new_output_neurons) == 0:
         return network
 
-    input_neurons = network.input_neurons
+    # Update output neurons
     output_neurons = network.output_neurons + list(new_output_neurons)
     num_output_neurons = len(output_neurons)
 
     # Check that none of the new neurons already exist in the network
     existing_neurons = network.graph.nodes
     for neuron in new_output_neurons:
-        assert neuron not in existing_neurons, neuron
-
-    # Set element-wise activations
-    hidden_activation = network.hidden_activation \
-        if isinstance(network.hidden_activation, eqx.Module) \
-        else network._hidden_activation
+         if neuron in existing_neurons:
+            raise ValueError(f"Neuron {neuron} already exists in the network.")
 
     # Update graph information
     new_graph = nx.DiGraph(network.graph)
     new_graph.add_nodes_from(new_output_neurons)
-
-    # Dropout
-    dropout_p = network.dropout_p
 
     # Update topological sort, appending the new output neurons to the end 
     # of the output neuron list
     topo_sort = network.topo_sort + list(new_output_neurons)
 
     # Random key
-    key = key if key is not None else network._get_key()
+    key = key if key is not None else jr.PRNGKey(0)
 
     # Create new network
     new_network = NeuralNetwork(
-        graph=new_graph,
-        input_neurons=input_neurons,
-        output_neurons=output_neurons,
-        hidden_activation=hidden_activation,
-        output_activation=network.output_transformation,
-        dropout_p=dropout_p,
-        use_topo_norm=network.use_topo_norm,
-        use_topo_self_attention=network.use_topo_self_attention,
-        use_neuron_self_attention=network.use_neuron_self_attention,
-        use_adaptive_activations=network.use_adaptive_activations,
+        new_graph,
+        network.input_neurons,
+        output_neurons,
+        network.hidden_activation,
+        network.output_transformation,
+        network.dropout_p,
+        network.use_topo_norm,
+        network.use_topo_self_attention,
+        network.use_neuron_self_attention,
+        network.use_adaptive_activations,
         topo_sort=topo_sort,
         key=key
     )
@@ -672,6 +642,8 @@ def add_output_neurons(
 def add_input_neurons(
     network: NeuralNetwork,
     new_input_neurons: Sequence[Any],
+    *,
+    key: Optional[jr.PRNGKey] = None
 ) -> NeuralNetwork:
     """Add input neurons to the network. Note that this function only adds neurons themselves,
     not any connections associated with the new neurons, effectively adding them as isolated nodes 
@@ -685,6 +657,8 @@ def add_input_neurons(
         identifiers/names) to add to the network. These must be unique, i.e. cannot already
         exist in the network. These must also specifically be input neurons. To add hidden or 
         output neurons, use `cnx.add_hidden_neurons` or `cnx.add_output_neurons`.
+    - `key`: The `jax.random.PRNGKey` used for new parameter initialization. 
+        Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
 
     **Returns:**
 
@@ -694,52 +668,46 @@ def add_input_neurons(
     if len(new_input_neurons) == 0:
         return network
 
-    # Set input and output neurons
+    # Update input neurons
     input_neurons = network.input_neurons + list(new_input_neurons)
-    output_neurons = network.output_neurons
 
     # Check that none of the new neurons already exist in the network
     existing_neurons = network.graph.nodes
     for neuron in new_input_neurons:
-        assert neuron not in existing_neurons, neuron
-
-    # Set element-wise activations
-    hidden_activation = network.hidden_activation \
-        if isinstance(network.hidden_activation, eqx.Module) \
-        else network._hidden_activation
+         if neuron in existing_neurons:
+            raise ValueError(f"Neuron {neuron} already exists in the network.")
 
     # Update graph information
     new_graph = nx.DiGraph(network.graph)
     new_graph.add_nodes_from(new_input_neurons)
 
-    # Dropout
-    dropout_p = network.dropout_p
-
     # Update topological sort, appending the new input neurons to the end of the input neuron list
     topo_sort = network.topo_sort
-    first, rest = topo_sort[:network.num_input_neurons], topo_sort[network.num_input_neurons:]
+    num_input_neurons = len(network.input_neurons)
+    first, rest = topo_sort[:num_input_neurons], topo_sort[num_input_neurons:]
     topo_sort = first + list(new_input_neurons) + rest
 
     # Random key
-    key = key if key is not None else network._get_key()
+    key = key if key is not None else jr.PRNGKey(0)
 
     # Create new network
     new_network = NeuralNetwork(
-        graph=new_graph,
-        input_neurons=input_neurons,
-        output_neurons=output_neurons,
-        hidden_activation=hidden_activation,
-        output_activation=network.output_transformation,
-        dropout_p=dropout_p,
-        use_topo_norm=network.use_topo_norm,
-        use_topo_self_attention=network.use_topo_self_attention,
-        use_neuron_self_attention=network.use_neuron_self_attention,
-        use_adaptive_activations=network.use_adaptive_activations,
+        new_graph,
+        input_neurons,
+        network.output_neurons,
+        network.hidden_activation,
+        network.output_transformation,
+        network.dropout_p,
+        network.use_topo_norm,
+        network.use_topo_self_attention,
+        network.use_neuron_self_attention,
+        network.use_adaptive_activations,
         topo_sort=topo_sort,
         key=key
     )
 
     num_new_input_neurons = len(new_input_neurons)
+    num_old_input_neurons = len(network.input_neurons)
     old_network = network
     assert old_network.num_topo_batches == new_network.num_topo_batches
     for i in range(1, old_network.num_topo_batches):
@@ -753,7 +721,7 @@ def add_input_neurons(
         new_network.weights_and_biases[0][num_new_input_neurons:].shape
     new_weights_and_biases = [
         new_network.weights_and_biases[0]
-            .at[:old_network.num_input_neurons]
+            .at[:num_old_input_neurons]
             .set(old_network.weights_and_biases[0])
     ] + old_network.weights_and_biases[1:]
     # Copy neuron-level attention parameters
@@ -761,7 +729,7 @@ def add_input_neurons(
         new_network.attention_params_neuron[0][num_new_input_neurons:].shape
     new_attention_params_neuron = [
         new_network.attention_params_neuron[0]
-            .at[:old_network.num_input_neurons]
+            .at[:num_old_input_neurons]
             .set(old_network.attention_params_neuron[0])
     ] + old_network.attention_params_neuron[1:] \
     if new_network.use_neuron_self_attention else [jnp.nan]
@@ -770,7 +738,7 @@ def add_input_neurons(
         new_network.attention_params_topo[0][num_new_input_neurons:].shape
     new_attention_params_topo = [
         new_network.attention_params_topo[0]
-            .at[:old_network.num_input_neurons]
+            .at[:num_old_input_neurons]
             .set(old_network.attention_params_topo[0])
     ] + old_network.attention_params_topo[1:] \
     if new_network.use_topo_self_attention else [jnp.nan]
@@ -779,7 +747,7 @@ def add_input_neurons(
         new_network.topo_norm_params[0][num_new_input_neurons:].shape
     new_topo_norm_params = [
         new_network.topo_norm_params[0]
-            .at[:old_network.num_input_neurons]
+            .at[:num_old_input_neurons]
             .set(old_network.topo_norm_params[0])
     ] + old_network.topo_norm_params[1:] \
     if new_network.use_topo_norm else [jnp.nan]
@@ -788,7 +756,7 @@ def add_input_neurons(
         new_network.adaptive_activation_params[0][num_new_input_neurons:].shape
     new_adaptive_activation_params = [
         new_network.adaptive_activation_params[0]
-            .at[:old_network.num_input_neurons]
+            .at[:num_old_input_neurons]
             .set(old_network.adaptive_activation_params[0])
     ] + old_network.adaptive_activation_params[1:] \
     if new_network.use_adaptive_activations else [jnp.nan]
@@ -837,7 +805,8 @@ def remove_neurons(
     # Check that all of the new neurons already exist in the network
     existing_neurons = network.graph.nodes
     for neuron in neurons:
-        assert neuron in existing_neurons, neuron
+         if neuron not in existing_neurons:
+            raise ValueError(f"Neuron {neuron} does not exist in the network.")
 
     # Remove all incoming and outgoing connections of all neurons to be removed
     edges_to_remove = {}
@@ -858,17 +827,9 @@ def remove_neurons(
         elif neuron in output_neurons:
             output_neurons.remove(neuron)
 
-    # Set element-wise activations
-    hidden_activation = network.hidden_activation \
-        if isinstance(network.hidden_activation, eqx.Module) \
-        else network._hidden_activation
-
     # Update graph information
     new_graph = nx.DiGraph(network.graph)
     new_graph.remove_nodes_from(neurons)
-
-    # Dropout
-    dropout_p = network.dropout_p
 
     # Update topological sort
     topo_sort = network.topo_sort
@@ -880,16 +841,16 @@ def remove_neurons(
 
     # Create new network
     new_network = NeuralNetwork(
-        graph=new_graph,
-        input_neurons=input_neurons,
-        output_neurons=output_neurons,
-        hidden_activation=hidden_activation,
-        output_activation=network.output_transformation,
-        dropout_p=dropout_p,
-        use_topo_norm=network.use_topo_norm,
-        use_topo_self_attention=network.use_topo_self_attention,
-        use_neuron_self_attention=network.use_neuron_self_attention,
-        use_adaptive_activations=network.use_adaptive_activations,
+        new_graph,
+        input_neurons,
+        output_neurons,
+        network.hidden_activation,
+        network.output_transformation,
+        network.dropout_p,
+        network.use_topo_norm,
+        network.use_topo_self_attention,
+        network.use_neuron_self_attention,
+        network.use_adaptive_activations,
         topo_sort=topo_sort,
         key=key
     )

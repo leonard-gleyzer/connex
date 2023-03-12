@@ -48,7 +48,6 @@ class NeuralNetwork(Module):
     input_neurons_id: Array = static_field()
     output_neurons_id: Array = static_field()
     num_neurons: int = static_field()
-    num_input_neurons: int = static_field()
     num_inputs_per_neuron: Array = static_field()
     dropout_p: Dict[Any, float] = static_field()
     _dropout_p: Array = static_field()
@@ -56,7 +55,6 @@ class NeuralNetwork(Module):
     use_topo_self_attention: bool = static_field()
     use_neuron_self_attention: bool = static_field()
     use_adaptive_activations: bool = static_field()
-    _hidden_activation: Callable = static_field()
     key_state: eqxe.StateIndex = static_field()
 
     def __init__(
@@ -294,6 +292,10 @@ class NeuralNetwork(Module):
     ) -> None:
         """Set the topological information and relevant attributes.
         """
+        # Check that the graph is acyclic
+        cycles = nx.simple_cycles(graph)
+        if cycles:
+            raise ValueError(f"`graph` contains cycles: {cycles}.")
         # Create an adjacency dict that maps a neuron id to its output ids and  
         # an inverse adjacency dict that maps a neuron id to its input ids
         adjacency_dict = {}
@@ -305,32 +307,49 @@ class NeuralNetwork(Module):
         self.num_inputs_per_neuron = jnp.array(num_inputs_per_neuron, dtype=float)
 
         # Set input neurons, output neurons, topological sort
-        assert isinstance(input_neurons, Sequence)
-        assert isinstance(output_neurons, Sequence)
+        input_neurons = list(input_neurons)
+        output_neurons = list(output_neurons)
         # Check that the input and output neurons are both non-empty
-        assert input_neurons and output_neurons
+        if not input_neurons:
+            raise ValueError("`input_neurons` must be a nonempty sequence.")
+        if not output_neurons:
+            raise ValueError("`output_neurons` must be a nonempty sequence.")
         # Check that the input and output neurons are disjoint
-        assert not (set(input_neurons) & set(output_neurons))
+        if set(input_neurons) & set(output_neurons):
+            raise ValueError("`input_neurons` and `output_neurons` must be disjoint.")
         # Check that input neurons themselves have no inputs
         for neuron in input_neurons:
-            assert not self.adjacency_dict_inv[neuron]
+            neurons_in = self.adjacency_dict_inv[neuron]
+            if neurons_in:
+                raise ValueError(
+                    f"""
+                    Input neuron {neuron} has input(s) from neuron(s) {neurons_in}. 
+                    Input neurons cannot themselves have inputs from other neurons.
+                    """
+                )
         # Check that output neurons themselves have no outputs
         for neuron in output_neurons:
-            assert not self.adjacency_dict[neuron]
-        self.num_input_neurons = len(input_neurons)
+            neurons_out = self.adjacency_dict[neuron]
+            if neurons_out:
+                raise ValueError(
+                    f"""
+                    Output neuron {neuron} has output(s) to neuron(s) {neurons_out}. 
+                    Output neurons cannot themselves have outputs to other neurons.
+                    """
+                )
 
         if topo_sort is None:
             topo_sort = nx.lexicographical_topological_sort(graph)
         else:
             graph_copy = nx.DiGraph(graph)
-            assert nx.is_directed_acyclic_graph(graph_copy)
             # Check that the provided topological sort is valid
             for neuron in topo_sort:
-                assert graph_copy.in_degree(neuron) == 0
+                if graph_copy.in_degree(neuron):
+                    raise ValueError(f"Invalid `topo_sort` at neuron {neuron}.")
                 graph_copy.remove_node(neuron)
         topo_sort = list(topo_sort)
         # Make sure input neurons appear first in the topo sort
-        first_topo_neurons = topo_sort[:self.num_input_neurons]
+        first_topo_neurons = topo_sort[:len(input_neurons)]
         if set(input_neurons) != set(first_topo_neurons):
             for neuron in input_neurons:
                 topo_sort.remove(neuron)
@@ -399,31 +418,38 @@ class NeuralNetwork(Module):
     ) -> None:
         """Set the activation functions.
         """
-        # Activations may themselves be `eqx.Module`s, so we do this to ensure
-        # that both `Module` and non-`Module` activations work with the same
-        # input shape
-        hidden_activation_ = hidden_activation \
-            if isinstance(hidden_activation, Module) else vmap(hidden_activation)
-
         x = jnp.zeros((1,))
         try:
-            y = hidden_activation_(x)
+            y = hidden_activation(x)
         except Exception as e:
-            raise e
-        assert jnp.array_equal(x.shape, y.shape)
+            raise Exception(
+                f"Exception caught when checking hidden activation:\n\n{e}"
+            )
+        if not jnp.array_equal(x.shape, y.shape):
+            raise ValueError(
+                f"""
+                Hidden activation output must have shape (1,) for input of shape (1,). 
+                Output had shape {y.shape}."""
+            )
 
-        x = jnp.zeros_like(self.output_neurons_id)
+        num_output_neurons = len(self.output_neurons)
+        x = jnp.zeros((num_output_neurons,))
         try:
             y = output_transformation(x)
         except Exception as e:
-            raise e
-        assert jnp.array_equal(x.shape, y.shape)
+            raise Exception(
+                f"Exception caught when checking output transformation:\n\n{e}"
+            )
+        if not jnp.array_equal(x.shape, y.shape):
+            raise ValueError(
+                f"""
+                Hidden activation output must have shape ({num_output_neurons},) 
+                for input of shape ({num_output_neurons},). 
+                Output had shape {y.shape}."""
+            )
 
-        self.hidden_activation = hidden_activation_
+        self.hidden_activation = hidden_activation
         self.output_transformation = output_transformation
-        
-        # Done for plasticity functionality
-        self._hidden_activation = hidden_activation
 
 
     def _set_parameters(
