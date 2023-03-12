@@ -1,10 +1,11 @@
 import typing
 from typing import Mapping, Sequence
+
 import jax.nn as jnn
-import networkx as nx
 
 
 # Documentation helpers.
+
 
 def _identity(x):
     return x
@@ -21,9 +22,7 @@ if getattr(typing, "GENERATING_DOCUMENTATION", False):
 ###############################################################
 
 
-def _invert_dict(
-    _dict: Mapping[int, Sequence[int]]
-) -> Mapping[int, Sequence[int]]:
+def _invert_dict(_dict: Mapping[int, Sequence[int]]) -> Mapping[int, Sequence[int]]:
     _dict_inv = {}
     for (key, vals) in _dict.items():
         for val in vals:
