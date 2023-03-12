@@ -1,5 +1,5 @@
 import typing
-from typing import Mapping, Sequence
+from typing import Any, Dict, List
 
 import jax.nn as jnn
 
@@ -22,7 +22,7 @@ if getattr(typing, "GENERATING_DOCUMENTATION", False):
 ###############################################################
 
 
-def _invert_dict(_dict: Mapping[int, Sequence[int]]) -> Mapping[int, Sequence[int]]:
+def _invert_dict(_dict: Dict[Any, List[Any]]) -> Dict[Any, List[Any]]:
     _dict_inv = {}
     for (key, vals) in _dict.items():
         for val in vals:
