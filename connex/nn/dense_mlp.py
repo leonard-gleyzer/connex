@@ -2,7 +2,6 @@ from typing import Callable, Optional
 
 import jax.nn as jnn
 import jax.random as jr
-
 import networkx as nx
 import numpy as np
 
@@ -10,11 +9,13 @@ from .. import NeuralNetwork
 from ..utils import _identity
 
 
-class MCMLP(NeuralNetwork):
+class DenseMLP(NeuralNetwork):
     """
-    A "Maximally-Connected Multi-Layer Perceptron". Like a standard MLP, but
+    A "Dense Multi-Layer Perceptron". Like a standard MLP, but
     every neuron is connected to every other neuron in all later layers, rather
-    than only the next layer.
+    than only the next layer. That is, each layer uses the outputs from _all_ previous
+    layers, not just the most recent one. The name DenseMLP is a reference to the
+    [DenseNet]() convolutional architecture for computer vision.
     """
 
     def __init__(
@@ -24,7 +25,7 @@ class MCMLP(NeuralNetwork):
         width: int,
         depth: int,
         hidden_activation: Callable = jnn.silu,
-        output_activation: Callable = _identity,
+        output_transformation: Callable = _identity,
         *,
         key: Optional[jr.PRNGKey] = None,
         **kwargs,
@@ -35,12 +36,13 @@ class MCMLP(NeuralNetwork):
         - `output_size`: The number of neurons in the output layer.
         - `width`: The number of neurons in each hidden layer.
         - `depth`: The number of hidden layers.
-        - `hidden_activation`: The activation function applied element-wise to the 
-            hidden (i.e. non-input, non-output) neurons. It can itself be a 
-            trainable equinox Module.
-        - `output_activation`: The activation function applied group-wise to the output 
-            neurons, e.g. `jax.nn.softmax`. It can itself be a trainable `equinox.Module`.
-        - `key`: The `PRNGKey` used to initialize parameters. Optional, keyword-only 
+        - `hidden_activation`: The activation function applied element-wise to
+            the hidden (i.e. non-input, non-output) neurons. It can itself be a
+            trainable `equinox Module`.
+        - `output_transformation`: The transformation applied group-wise to the
+            output neurons, e.g. `jax.nn.softmax`. It can itself be a trainable
+            `equinox.Module`.
+        - `key`: The `PRNGKey` used to initialize parameters. Optional, keyword-only
             argument. Defaults to `jax.random.PRNGKey(0)`.
         """
         key = key if key is not None else jr.PRNGKey(0)
@@ -65,8 +67,8 @@ class MCMLP(NeuralNetwork):
             input_neurons,
             output_neurons,
             hidden_activation,
-            output_activation,
+            output_transformation,
             topo_sort=topo_sort,
             key=key,
-            **kwargs
+            **kwargs,
         )
