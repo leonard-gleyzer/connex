@@ -14,8 +14,18 @@ class DenseMLP(NeuralNetwork):
     A "Dense Multi-Layer Perceptron". Like a standard MLP, but
     every neuron is connected to every other neuron in all later layers, rather
     than only the next layer. That is, each layer uses the outputs from _all_ previous
-    layers, not just the most recent one. The name DenseMLP is a reference to the
-    [DenseNet]() convolutional architecture for computer vision.
+    layers, not just the most recent one, in a similar manner to DenseNet.
+
+    ??? cite
+        [Densely Connected Convolutional Networks](https://arxiv.org/abs/1608.06993)
+        ```bibtex
+        @article{ba2016layer,
+            author={Gao Huang, Zhuang Liu, Laurens van der Maaten, Kilian Q. Weinberger},  # noqa: E501
+            title={Densely Connected Convolutional Networks},
+            year={2016},
+            journal={arXiv:1608.06993},
+        }
+        ```
     """
 
     def __init__(
