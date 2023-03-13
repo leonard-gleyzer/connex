@@ -259,7 +259,7 @@ class NeuralNetwork(Module):
             vals = values[indices]
 
             # Topo Norm
-            if self.use_topo_norm and jnp.size(vals) > 1:
+            if self.use_topo_norm:
                 vals = self._apply_topo_norm(norm_params, vals)
 
             # Topo-level self-attention
@@ -300,7 +300,11 @@ class NeuralNetwork(Module):
         learnable elementwise-affine transformation.
         """
         gamma, beta = norm_params
-        return jnn.standardize(vals) * gamma + beta
+        return lax.cond(
+            jnp.size(vals) > 1,  # Don't standardize if there is only one neuron
+            lambda: jnn.standardize(vals) * gamma + beta,
+            lambda: vals,
+        )
 
     def _apply_topo_self_attention(self, attn_params: Array, vals: Array) -> Array:
         """Function for a topo batch to apply self-attention to its collective inputs,
