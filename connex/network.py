@@ -140,6 +140,7 @@ class NeuralNetwork(Module):
             Neuron-level self-attention will use significantly more memory than
             than topo-level self-attention. You may notice training is slower with
             this enabled.
+
         - `use_adaptive_activations`: A bool indicating whether to use neuron-wise
             adaptive activations, where all hidden activations transform as
             `σ(x) -> a * σ(b * x)`, where `a`, `b` are trainable scalar parameters
