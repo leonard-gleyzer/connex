@@ -257,12 +257,15 @@ class NeuralNetwork(Module):
             # Previous neuron values strictly necessary to process the current
             # topological batch
             vals = values[indices]
+
             # Topo Norm
             if self.use_topo_norm and jnp.size(vals) > 1:
                 vals = self._apply_topo_norm(norm_params, vals)
+
             # Topo-level self-attention
             if self.use_topo_self_attention:
                 vals = self._apply_topo_self_attention(attn_params_t, vals)
+
             # Neuron-level self-attention
             if self.use_neuron_self_attention:
                 _apply_neuron_self_attention = vmap(
@@ -271,13 +274,16 @@ class NeuralNetwork(Module):
                 vals = _apply_neuron_self_attention(
                     tb, attn_params_n, attn_mask_n, vals
                 )
+
             # Affine transformation, wx + b
             weights, biases = w_and_b[:, :-1], w_and_b[:, -1]
             affine = (weights * mask) @ vals + biases
+
             # Apply activations/dropout
             output_values = (
                 vmap(self._apply_activation)(tb, affine, ada_params) * dropout_keep[tb]
             )
+
             # Set new values
             values = values.at[tb].set(output_values)
 
@@ -313,7 +319,7 @@ class NeuralNetwork(Module):
         return attention_weights @ value + vals
 
     def _apply_neuron_self_attention(
-        self, id: int, attn_params: Array, attn_mask: Array, vals: Array
+        self, id: Array, attn_params: Array, attn_mask: Array, vals: Array
     ) -> Array:
         """Function for a single neuron to apply self-attention to its inputs,
         followed by a skip connection.
@@ -330,7 +336,7 @@ class NeuralNetwork(Module):
         attention_weights = jnn.softmax(scaled_outer_product - attn_mask)
         return attention_weights @ value + vals
 
-    def _apply_activation(self, id: int, affine: float, ada_params: Array) -> Array:
+    def _apply_activation(self, id: Array, affine: Array, ada_params: Array) -> Array:
         """Function for a single neuron to apply its activation."""
         gain, amplification = lax.cond(
             self.use_adaptive_activations, lambda: ada_params, lambda: jnp.ones((2,))
