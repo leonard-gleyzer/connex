@@ -135,9 +135,12 @@ def add_connections(
     # Loop through each topo batch in the new network and copy the corresponding
     # parameters present in the old network to the new network
     for i, tb_new in enumerate(new_network.topo_batches):
+        # Get the indices of the topological batch in the old network
         tb_old = ids_new_to_old[tb_new]
 
-        # Get the index of the topo batch `tb_old` is a subset of
+        # Get the index of the old network topo batch `tb_old` is a subset of.
+        # Note that each topo batch in the new network is a subset of a topo batch
+        # in the old network.
         tb_index, _ = old_network.neuron_to_topo_batch_idx[tb_old[0]]
 
         # Make sure it is actually a subset
@@ -146,6 +149,9 @@ def add_connections(
         )
         assert intersection.size == tb_old.size
 
+        # For the current topological batch in the new network, get the minimum and
+        # maximum index of the topo batch's collective inputs, and get the indices
+        # of the corresponding contiguous range in terms of old network ids.
         min_new, max_new = new_network.min_index[i], new_network.max_index[i]
         range_new = np.arange(min_new, max_new + 1)
         min_old, max_old = (
@@ -343,9 +349,12 @@ def remove_connections(
     # Loop through each topo batch in the old network and copy the corresponding
     # parameters present in the new network from the old network
     for i, tb_old in enumerate(old_network.topo_batches):
+        # Get the indices of the old topological batch in the new network
         tb_new = ids_old_to_new[tb_old]
 
-        # Get the index in the old network of the topo batch `tb_new` is a subset of
+        # Get the index of the new network topo batch `tb_new` is a subset of.
+        # Note that each topo batch in the old network is a subset of a topo batch
+        # in the new network.
         tb_index, _ = new_network.neuron_to_topo_batch_idx[tb_new[0]]
 
         # Make sure it is actually a subset
@@ -354,6 +363,9 @@ def remove_connections(
         )
         assert intersection.size == tb_new.size
 
+        # For the current topological batch in the old network, get the minimum and
+        # maximum index of the topo batch's collective inputs, and get the indices
+        # of the corresponding contiguous range in terms of new network ids.
         min_old, max_old = old_network.min_index[i], new_network.max_index[i]
         range_old = np.arange(min_old, max_old + 1)
         min_new, max_new = (
@@ -532,6 +544,9 @@ def add_hidden_neurons(
 
     old_network = network
     num_new_hidden_neurons = len(new_hidden_neurons)
+
+    # There are no new connection weights so parameter arrays should keep
+    # their shape
     assert old_network.num_topo_batches == new_network.num_topo_batches
     for i in range(old_network.num_topo_batches - 1):
         assert (
@@ -718,6 +733,9 @@ def add_output_neurons(
 
     old_network = network
     num_new_output_neurons = len(new_output_neurons)
+
+    # There are no new connection weights so parameter arrays should keep
+    # their shape
     assert old_network.num_topo_batches == new_network.num_topo_batches
     for i in range(old_network.num_topo_batches - 1):
         assert (
@@ -913,6 +931,9 @@ def add_input_neurons(
     old_network = network
     num_new_input_neurons = len(new_input_neurons)
     num_old_input_neurons = len(network.input_neurons)
+
+    # There are no new connection weights so parameter arrays should keep
+    # their shape
     assert old_network.num_topo_batches == new_network.num_topo_batches
     for i in range(1, old_network.num_topo_batches):
         assert (
@@ -1104,7 +1125,7 @@ def remove_neurons(
     old_network = network
     ids_old_to_new, ids_new_to_old = _get_id_mappings_old_new(old_network, new_network)
 
-    # Copy neuron parameters and attention parameters
+    # Copy parameters
     new_weights_and_biases = [np.array(w) for w in new_network.weights_and_biases]
     new_attention_params_neuron = [
         np.array(w) for w in new_network.attention_params_neuron
@@ -1118,10 +1139,15 @@ def remove_neurons(
     # Loop through each topo batch in the new network and copy the corresponding
     # parameters present in the old network to the new network
     for i, tb_new in enumerate(new_network.topo_batches):
+        # Get the ids of the topological batch in the new network in terms of
+        # old network ids
         tb_old = ids_new_to_old[tb_new]
+
+        # Make sure they are all valid ids (present in the old network)
         assert np.all(tb_old >= 0)
 
-        # Get the index of the topo batch `tb_old` is a subset of
+        # Get the index of the topo batch `tb_old` is a subset of. Note that each
+        # topo batch in the new network is a subset of a topo batch in the old network.
         tb_index, _ = old_network.neuron_to_topo_batch_idx[tb_old[0]]
 
         # Make sure it is actually a subset
@@ -1130,6 +1156,9 @@ def remove_neurons(
         )
         assert intersection.size == tb_old.size
 
+        # For the current topological batch in the new network, get the minimum and
+        # maximum index of the topo batch's collective inputs, and get the indices
+        # of the corresponding contiguous range in terms of old network ids.
         min_new, max_new = new_network.min_index[i], new_network.max_index[i]
         range_new = np.arange(min_new, max_new + 1)
         min_old, max_old = (
@@ -1140,7 +1169,7 @@ def remove_neurons(
         input_indices_old = ids_new_to_old[range_new]
         assert np.all(input_indices_old >= 0)
         intersection_old = np.intersect1d(range_old, input_indices_old)
-        assert intersection_old.size > 0
+        assert intersection_old.size == input_indices_old.size
 
         # Re-order the values of `intersection_old` to reflect the order in
         # `input_indices_old`
