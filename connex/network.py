@@ -27,6 +27,8 @@ class NeuralNetwork(Module):
     attention_params_topo: List[Array]
     attention_params_neuron: List[Array]
     adaptive_activation_params: List[Array]
+    dropout_p: Dict[Any, float]
+    _dropout_p: Array
     graph: nx.DiGraph = static_field()
     adjacency_dict: Dict[int, List[int]] = static_field()
     adjacency_dict_inv: Dict[int, List[int]] = static_field()
@@ -49,8 +51,6 @@ class NeuralNetwork(Module):
     output_neurons_id: Array = static_field()
     num_neurons: int = static_field()
     num_inputs_per_neuron: Array = static_field()
-    dropout_p: Dict[Any, float]
-    _dropout_p: Array
     use_topo_norm: bool = static_field()
     use_topo_self_attention: bool = static_field()
     use_neuron_self_attention: bool = static_field()
@@ -62,7 +62,7 @@ class NeuralNetwork(Module):
         graph: nx.DiGraph,
         input_neurons: Sequence[Any],
         output_neurons: Sequence[Any],
-        hidden_activation: Callable = jnn.silu,
+        hidden_activation: Callable = jnn.gelu,
         output_transformation: Callable = _identity,
         dropout_p: Union[float, Mapping[Any, float]] = 0.0,
         use_topo_norm: bool = False,

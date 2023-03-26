@@ -13,10 +13,10 @@ def _identity(x):
 
 if getattr(typing, "GENERATING_DOCUMENTATION", False):
 
-    def silu(_):
+    def gelu(_):
         pass
 
-    jnn.silu = silu
+    jnn.gelu = gelu
     _identity.__qualname__ = "identity"
 
 ###############################################################
