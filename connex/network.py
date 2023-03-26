@@ -9,7 +9,7 @@ import jax.random as jr
 import networkx as nx
 import numpy as np
 from equinox import filter_jit, Module, static_field, tree_at
-from jax import Array, lax, vmap
+from jax import Array, jit, lax, vmap
 
 from .utils import _identity, _invert_dict
 
@@ -27,6 +27,7 @@ class NeuralNetwork(Module):
     attention_params_topo: List[Array]
     attention_params_neuron: List[Array]
     adaptive_activation_params: List[Array]
+    graph: nx.DiGraph = static_field()
     adjacency_dict: Dict[int, List[int]] = static_field()
     adjacency_dict_inv: Dict[int, List[int]] = static_field()
     neuron_to_id: Dict[Any, int] = static_field()
@@ -48,8 +49,8 @@ class NeuralNetwork(Module):
     output_neurons_id: Array = static_field()
     num_neurons: int = static_field()
     num_inputs_per_neuron: Array = static_field()
-    dropout_p: Dict[Any, float] = static_field()
-    _dropout_p: Array = static_field()
+    dropout_p: Dict[Any, float]
+    _dropout_p: Array
     use_topo_norm: bool = static_field()
     use_topo_self_attention: bool = static_field()
     use_neuron_self_attention: bool = static_field()
@@ -73,7 +74,7 @@ class NeuralNetwork(Module):
         key: Optional[jr.PRNGKey] = None,
         **kwargs,
     ):
-        """**Arguments**:
+        r"""**Arguments**:
 
         - `graph`: A `networkx.DiGraph` representing the DAG structure of the neural
             network.
@@ -179,7 +180,7 @@ class NeuralNetwork(Module):
             use_neuron_self_attention,
             use_adaptive_activations,
         )
-        self._set_dropout_p(dropout_p)
+        self._set_dropout_p_initial(dropout_p)
 
     @filter_jit
     def __call__(
@@ -281,7 +282,10 @@ class NeuralNetwork(Module):
 
             # Apply activations/dropout
             output_values = (
-                vmap(self._apply_activation)(tb, affine, ada_params) * dropout_keep[tb]
+                vmap(self._apply_activation, in_axes=[0, 0, None])(
+                    tb, affine, ada_params
+                )
+                * dropout_keep[tb]
             )
 
             # Set new values
@@ -299,7 +303,7 @@ class NeuralNetwork(Module):
         """Function for a topo batch to standardize its inputs, followed by a
         learnable elementwise-affine transformation.
         """
-        gamma, beta = norm_params
+        gamma, beta = norm_params[0], norm_params[1]
         return lax.cond(
             jnp.size(vals) > 1,  # Don't standardize if there is only one neuron
             lambda: jnn.standardize(vals) * gamma + beta,
@@ -310,14 +314,14 @@ class NeuralNetwork(Module):
         """Function for a topo batch to apply self-attention to its collective inputs,
         followed by a skip connection.
         """
-        query_params, key_params, value_params = attn_params
+        query_params, key_params, value_params = attn_params[:]
         query_weight, query_bias = query_params[:, :-1], query_params[:, -1]
         key_weight, key_bias = key_params[:, :-1], key_params[:, -1]
         value_weight, value_bias = value_params[:, :-1], value_params[:, -1]
         query = query_weight @ vals + query_bias
         key = key_weight @ vals + key_bias
         value = value_weight @ vals + value_bias
-        rsqrt = lax.rsqrt(jnp.size(vals))
+        rsqrt = lax.rsqrt(float(jnp.size(vals)))
         scaled_outer_product = jnp.outer(query, key) * rsqrt
         attention_weights = jnn.softmax(scaled_outer_product)
         return attention_weights @ value + vals
@@ -328,7 +332,7 @@ class NeuralNetwork(Module):
         """Function for a single neuron to apply self-attention to its inputs,
         followed by a skip connection.
         """
-        query_params, key_params, value_params = attn_params
+        query_params, key_params, value_params = attn_params[:]
         query_weight, query_bias = query_params[:, :-1], query_params[:, -1]
         key_weight, key_bias = key_params[:, :-1], key_params[:, -1]
         value_weight, value_bias = value_params[:, :-1], value_params[:, -1]
@@ -342,8 +346,9 @@ class NeuralNetwork(Module):
 
     def _apply_activation(self, id: Array, affine: Array, ada_params: Array) -> Array:
         """Function for a single neuron to apply its activation."""
+        ones = jnp.ones((2,))
         gain, amplification = lax.cond(
-            self.use_adaptive_activations, lambda: ada_params, lambda: jnp.ones((2,))
+            self.use_adaptive_activations, lambda: ada_params * ones, lambda: ones
         )
         _expand = ft.partial(jnp.expand_dims, axis=0)
         output = lax.cond(
@@ -380,10 +385,21 @@ class NeuralNetwork(Module):
     ) -> None:
         """Set the topological information and relevant attributes."""
         # Check that the graph is acyclic
-        cycles = nx.simple_cycles(graph)
+        cycles = list(nx.simple_cycles(graph))
         if cycles:
             raise ValueError(f"`graph` contains cycles: {cycles}.")
 
+        # Check that the input and output neurons are actually present in the network
+        for neuron in input_neurons:
+            if neuron not in graph.nodes():
+                raise ValueError(
+                    f"`input_neurons` contains a neuron not in the network: {neuron}"
+                )
+        for neuron in output_neurons:
+            if neuron not in graph.nodes():
+                raise ValueError(
+                    f"`output_neurons` contains a neuron not in the network: {neuron}"
+                )
         input_neurons = list(input_neurons)
         output_neurons = list(output_neurons)
 
@@ -399,7 +415,8 @@ class NeuralNetwork(Module):
             raise ValueError(
                 f"""
                 `input_neurons` and `output_neurons` must be disjoint, but
-                neurons {list(input_output_intersection)} appear in both."""
+                neurons {list(input_output_intersection)} appear in both.
+                """
             )
 
         # Topological sort
@@ -426,19 +443,17 @@ class NeuralNetwork(Module):
                 topo_sort.remove(neuron)
             topo_sort = topo_sort + output_neurons
 
+        # Map a neuron to its `int` id, which is its position in the topo sort
+        self.neuron_to_id = {neuron: id for (id, neuron) in enumerate(topo_sort)}
+
         # Create an adjacency dict that maps a neuron id to its output ids and
         # an inverse adjacency dict that maps a neuron id to its input ids
-        adjacency_dict = {}
-        adjacency_dict_ = nx.to_dict_of_lists(graph)
-        for (input, outputs) in adjacency_dict_.items():
-            adjacency_dict[self.neuron_to_id[input]] = [
-                self.neuron_to_id[o] for o in outputs
-            ]
+        adjacency_dict = nx.to_dict_of_lists(graph)
         adjacency_dict_inv = _invert_dict(adjacency_dict)
 
         # Store the number of inputs per neuron
         num_inputs_per_neuron = [
-            len(adjacency_dict_inv[i]) for i in range(graph.number_of_nodes)
+            len(adjacency_dict_inv[neuron]) for neuron in topo_sort
         ]
         self.num_inputs_per_neuron = jnp.array(num_inputs_per_neuron, dtype=float)
 
@@ -467,9 +482,6 @@ class NeuralNetwork(Module):
         # Set the network's underlying graph
         self.graph = graph
 
-        # Map a neuron to its `int` id, which is its position in the topo sort
-        neuron_to_id = {neuron: id for (id, neuron) in enumerate(topo_sort)}
-
         self.topo_sort = topo_sort
         self.num_neurons = len(topo_sort)
 
@@ -493,15 +505,16 @@ class NeuralNetwork(Module):
 
         # Topological batching
         # See Section 2.2 of https://arxiv.org/abs/2101.07965
+        graph_copy = nx.DiGraph(graph)
         topo_batches, topo_batch, neurons_to_remove = [], [], []
         for neuron in topo_sort:
-            if graph.in_degree(neuron) == 0:
-                topo_batch.append(neuron_to_id[neuron])
+            if graph_copy.in_degree(neuron) == 0:
+                topo_batch.append(self.neuron_to_id[neuron])
                 neurons_to_remove.append(neuron)
             else:
                 topo_batches.append(np.array(topo_batch, dtype=int))
-                graph.remove_nodes_from(neurons_to_remove)
-                topo_batch = [neuron_to_id[neuron]]
+                graph_copy.remove_nodes_from(neurons_to_remove)
+                topo_batch = [self.neuron_to_id[neuron]]
                 neurons_to_remove = [neuron]
         topo_batches.append(np.array(topo_batch, dtype=int))
 
@@ -509,7 +522,6 @@ class NeuralNetwork(Module):
         # it here, since it is handled separately in the forward pass
         self.topo_batches = [jnp.array(tb, dtype=int) for tb in topo_batches[1:]]
         self.num_topo_batches = len(self.topo_batches)
-        self.neuron_to_id = neuron_to_id
 
         # Maps a neuron id to its topological batch and position within that batch
         neuron_to_topo_batch_idx = {}
@@ -571,7 +583,8 @@ class NeuralNetwork(Module):
         min_index = np.array([])
         max_index = np.array([])
         for tb in self.topo_batches:
-            input_locs = [self.adjacency_dict_inv[int(i)] for i in tb]
+            inputs_ = [self.adjacency_dict_inv[self.topo_sort[int(i)]] for i in tb]
+            input_locs = [[self.neuron_to_id[n] for n in inputs] for inputs in inputs_]
             mins = np.array([np.amin(locs) for locs in input_locs])
             maxs = np.array([np.amax(locs) for locs in input_locs])
             min_index = np.append(min_index, np.amin(mins))
@@ -622,8 +635,12 @@ class NeuralNetwork(Module):
         ):
             weights = w_and_b[:, :-1]
             mask = np.zeros_like(weights)
-            for (i, neuron) in enumerate(tb):
-                inputs = jnp.array(self.adjacency_dict_inv[int(neuron)], dtype=int)
+            for (i, id) in enumerate(tb):
+                neuron = self.topo_sort[int(id)]
+                inputs = jnp.array(
+                    list(map(self.neuron_to_id.get, self.adjacency_dict_inv[neuron])),
+                    dtype=int,
+                )
                 mask[i, inputs - min_idx] = 1
             masks.append(jnp.array(mask, dtype=int))
         self.masks = masks
@@ -662,7 +679,7 @@ class NeuralNetwork(Module):
                 for i in range(self.num_topo_batches)
             ]
             outer_product = vmap(lambda x: jnp.outer(x, x))
-            mask_fn = filter_jit(lambda m: jnp.where(outer_product(m), 0, jnp.inf))
+            mask_fn = jit(lambda m: jnp.where(outer_product(m), 0, jnp.inf))
             self.attention_masks_neuron = [mask_fn(mask) for mask in self.masks]
         else:
             self.attention_params_neuron = [jnp.nan] * self.num_topo_batches
@@ -688,7 +705,9 @@ class NeuralNetwork(Module):
         else:
             self.adaptive_activation_params = [jnp.nan] * self.num_topo_batches
 
-    def _set_dropout_p(self, dropout_p: Union[float, Mapping[Any, float]]) -> None:
+    def _set_dropout_p_initial(
+        self, dropout_p: Union[float, Mapping[Any, float]]
+    ) -> None:
         """Set the initial per-neuron dropout probabilities."""
         dropout_dict = {neuron: 0.0 for neuron in self.topo_sort}
         if isinstance(dropout_p, float):
@@ -701,10 +720,12 @@ class NeuralNetwork(Module):
             assert isinstance(dropout_p, Mapping)
             _dropout_p = np.zeros((self.num_neurons,))
             for (n, d) in dropout_p.items():
-                assert n in self.neuron_to_id
-                assert isinstance(d, float)
+                if n not in self.graph.nodes:
+                    raise ValueError(f"'{n}' is not present in the network.")
+                if not isinstance(d, float):
+                    raise TypeError(f"Invalid dropout value of {d} for neuron {n}.")
                 _dropout_p[self.neuron_to_id[n]] = d
-                dropout_dict[neuron] = d
+                dropout_dict[n] = d
             _dropout_p = jnp.array(_dropout_p, dtype=float)
         assert jnp.all(jnp.greater_equal(_dropout_p, 0))
         assert jnp.all(jnp.less_equal(_dropout_p, 1))
@@ -714,340 +735,6 @@ class NeuralNetwork(Module):
     #####################################################
     ################## Public methods ###################  # noqa: E266
     #####################################################
-
-    def copy(self) -> "NeuralNetwork":
-        """**Returns:**
-
-        A copy of the network with no modification.
-        """
-        return tree_at(lambda net: net.num_neurons, self, self.num_neurons)
-
-    def enable_neuron_self_attention(
-        self, *, key: Optional[jr.PRNGKey] = None
-    ) -> "NeuralNetwork":
-        """Enable the network to use neuron-level self-attention, where each neuron
-        has its own unique (single-headed) self-attention module for its inputs.
-
-        **Arguments:**
-
-        - `key`: A `jax.random.PRNGKey` for the initialization of the attention
-            parameters. Optional, keyword-only argument.
-            Defaults to `jax.random.PRNGKey(0)`.
-
-        **Returns:**
-
-        A copy of the current network with new trainable neuron-level self-attention
-        parameters. If the network already has neuron-level self-attention enabled,
-        a copy of the network is returned without modification.
-
-        Note that if `disable_neuron_self_attention` had previously been called, those
-        parameters were wiped out and so the new self-attention parameters will _not_
-        revert to the parameters prior to the call to `disable_neuron_self_attention`.
-        """
-        # If already enabled, return a copy of the network
-        if self.use_neuron_self_attention:
-            return self.copy()
-
-        # Random key
-        key = key if key is not None else jr.PRNGKey(0)
-
-        # Parameters and masks for neuron-wise self-attention
-        *akeys, key = jr.split(key, self.num_topo_batches + 1)
-        attention_params_neuron = [
-            jr.normal(
-                akeys[i],
-                (
-                    self.topo_sizes[i],
-                    3,  # query, key, value
-                    self.topo_lengths[i],
-                    self.topo_lengths[i] + 1,
-                ),
-            )
-            * 0.1
-            for i in range(self.num_topo_batches)
-        ]
-        outer_product = vmap(lambda x: jnp.outer(x, x))
-        mask_fn = filter_jit(lambda m: jnp.where(outer_product(m), 0, jnp.inf))
-        attention_masks_neuron = [mask_fn(mask) for mask in self.masks]
-
-        # Set parameters and return
-        return tree_at(
-            lambda network: (
-                network.use_neuron_self_attention,
-                network.attention_params_neuron,
-                network.attention_masks_neuron,
-            ),
-            self,
-            (True, attention_params_neuron, attention_masks_neuron),
-        )
-
-    def disable_neuron_self_attention(self) -> "NeuralNetwork":
-        """Disable the network from using neuron-level self-attention, where each
-        neuron has its own unique (single-headed) self-attention module for its inputs.
-
-        **Returns:**
-
-        A copy of the current network with neuron-level self-attention parameters
-        removed. If the network already has neuron-level self-attention disabled,
-        a copy of the network is returned without modification.
-
-        Note that this method wipes out the neuron-level self-attention parameters
-        (on the returned copy) to minimize unnecessary memory use. If this function
-        is called, followed by `enable_neuron_level_self_attention` on the returned
-        network, those parameters will not revert to what they previously were in the
-        original network.
-        """
-        # If already disabled, return a copy of the network
-        if not self.use_neuron_self_attention:
-            return self.copy()
-
-        # Return copy of network with neuron-level self-attention parameters wiped out
-        nan_list = [jnp.nan] * self.num_topo_batches
-        return tree_at(
-            lambda network: (
-                network.use_neuron_self_attention,
-                network.attention_params_neuron,
-                network.attention_masks_neuron,
-            ),
-            self,
-            (False, nan_list, nan_list),
-        )
-
-    def enable_topo_self_attention(
-        self, *, key: Optional[jr.PRNGKey] = None
-    ) -> "NeuralNetwork":
-        """Enable the network to use topological-level self-attention, where
-        self-attention is applied to each topological batch's collective inputs
-        prior to undergoing an affine (linear) transformation.
-
-        **Arguments:**
-
-        - `key`: A `jax.random.PRNGKey` for the initialization of the attention
-            parameters. Optional, keyword-only argument.
-            Defaults to `jax.random.PRNGKey(0)`.
-
-        **Returns:**
-
-        A copy of the current network with new trainable topological-level
-        self-attention parameters. If the network already has topological-level
-        self-attention enabled, a copy of the network is returned without
-        modification.
-
-        Note that if `disable_topo_self_attention` had previously been called, those
-        parameters were wiped out in the returned network, so the new self-attention
-        parameters will _not_ revert to the original parameters.
-        """
-        # If already enabled, return a copy of the network
-        if self.use_topo_self_attention:
-            return self.copy()
-
-        # Random key
-        key = key if key is not None else jr.PRNGKey(0)
-
-        # Parameters for topological-level self-attention
-        *akeys, key = jr.split(key, self.num_topo_batches + 1)
-        attention_params_topo = [
-            jr.normal(akeys[i], (3, self.topo_lengths[i], self.topo_lengths[i] + 1))
-            * 0.1
-            for i in range(self.num_topo_batches)
-        ]
-
-        # Set parameters and return
-        return tree_at(
-            lambda network: (
-                network.use_topo_self_attention,
-                network.attention_params_topo,
-            ),
-            self,
-            (True, attention_params_topo),
-        )
-
-    def disable_topo_self_attention(self) -> "NeuralNetwork":
-        """Disable the network from using topological-level self-attention, where
-        self-attention is applied to each topological batch's collective inputs.
-
-        **Returns:**
-
-        A copy of the current network with topological-level self-attention parameters
-        removed. If the network already has topological-level self-attention disabled,
-        a copy of the network is returned without modification.
-
-        Note that this method wipes out the topological-level self-attention
-        parameters on the returned copy to minimize unnecessary memory use. If this
-        function is called, followed by `enable_topological_level_self_attention`,
-        those parameters will not revert to their original values prior to calling
-        this method.
-        """
-        # If already disabled, return a copy of the network
-        if not self.use_topo_self_attention:
-            return self.copy()
-
-        # Return copy of network with topological-level self-attention
-        # parameters wiped out
-        return tree_at(
-            lambda network: (
-                network.use_topo_self_attention,
-                network.attention_params_topo,
-            ),
-            self,
-            (False, [jnp.nan] * self.num_topo_batches),
-        )
-
-    def enable_topo_norm(self, *, key: Optional[jr.PRNGKey] = None) -> "NeuralNetwork":
-        """Enable the network to use "Topo Norm", the equivalent of Layer Norm for
-        topological batches.
-
-        More specifically, each topological batch's collective inputs are standardized
-        (centered and rescaled), followed by a learnable element-wise affine
-        transformation. This occurs before any further processing of the
-        topological batch (e.g. attention, affine transformation).
-
-        **Arguments:**
-
-        - `key`: A `jax.random.PRNGKey` for the initialization of the Topo Norm
-            parameters. Optional, keyword-only argument.
-            Defaults to `jax.random.PRNGKey(0)`.
-
-        **Returns:**
-
-        A copy of the current network with new trainable Topo Norm parameters.
-        If the network already has Topo Norm, a copy of the network is
-        returned without modification.
-
-        Note that if `disable_topo_norm` had previously been called, those parameters
-        were wiped out in the returned network and so the new Topo Norm parameters will
-        _not_ revert to the original parameters prior to the call to
-        `disable_topo_norm`.
-        """
-        # If already enabled, return a copy of the network
-        if self.use_topo_norm:
-            return self.copy()
-
-        # Random key
-        key = key if key is not None else jr.PRNGKey(0)
-
-        # Parameters for Topo Norm
-        *nkeys, key = jr.split(key, self.num_topo_batches + 1)
-        topo_norm_params = [
-            jr.normal(nkeys[i], (2, self.topo_lengths[i])) * 0.1 + 1
-            for i in range(self.num_topo_batches)
-        ]
-
-        # Set parameters and return
-        return tree_at(
-            lambda network: (network.use_topo_norm, network.topo_norm_params),
-            self,
-            (True, topo_norm_params),
-        )
-
-    def disable_topo_norm(self) -> "NeuralNetwork":
-        """Disable the network from using "Topo Norm", the equivalent of Layer Norm
-        for topological batches.
-
-        More specifically, with Topo Norm enabled, each topological batch's collective
-        inputs are standardized (centered and rescaled), followed by a learnable
-        element-wise affine transformation. This occurs before any further processing
-        of the topolical batch (e.g. attention, affine transformation).
-
-        **Returns:**
-
-        A copy of the current network with Topo Norm parameters removed.
-        If the network already has Topo Norm disabled, a copy of the network is
-        returned without modification.
-
-        Note that this method wipes out the Topo Norm parameters (on the returned
-        copy) to minimize unnecessary memory use. If this function is called, followed
-        by `enable_topo_norm`, those parameters will not revert to what they previously
-        were.
-        """
-        # If already disabled, return a copy of the network
-        if not self.use_topo_norm:
-            return self.copy()
-
-        # Return copy of network with Topo Norm parameters wiped out
-        return tree_at(
-            lambda network: (network.use_topo_norm, network.topo_norm_params),
-            self,
-            (False, [jnp.nan] * self.num_topo_batches),
-        )
-
-    def enable_adaptive_activations(
-        self, *, key: Optional[jr.PRNGKey] = None
-    ) -> "NeuralNetwork":
-        """Enable the network to use adaptive activations, where all hidden activations
-        transform as `σ(x) -> a * σ(b * x)`, where `a`, `b` are trainable scalar
-        parameters unique to each hidden neuron.
-
-        **Arguments:**
-
-        - `key`: A `jax.random.PRNGKey` for the initialization of the adaptive
-            activation parameters. Optional, keyword-only argument.
-            Defaults to `jax.random.PRNGKey(0)`.
-
-        **Returns:**
-
-        A copy of the current network with new trainable adaptive activation
-        parameters. If the network already has adaptive activations, a copy
-        of the network is returned without modification.
-
-        Note that if `disable_adaptive activations` had previously been called, those
-        parameters were wiped out in the returned network and so the new adaptive
-        activation parameters will _not_ revert to the parameters prior to the call to
-        `disable_adaptive_activations`.
-        """
-        # If already enabled, return a copy of the network
-        if self.use_adaptive_activations:
-            return self.copy()
-
-        # Random key
-        key = key if key is not None else jr.PRNGKey(0)
-
-        # Parameters for adaptive activations
-        akeys = jr.split(key, self.num_topo_batches)
-        adaptive_activation_params = [
-            jr.normal(akeys[i], (self.topo_sizes[i], 2)) * 0.1 + 1
-            for i in range(self.num_topo_batches)
-        ]
-
-        # Set parameters and return
-        return tree_at(
-            lambda network: (
-                network.use_adaptive_activations,
-                network.adaptive_activation_params,
-            ),
-            self,
-            (True, adaptive_activation_params),
-        )
-
-    def disable_adaptive_activations(self) -> "NeuralNetwork":
-        """Disable the network from using adaptive activations, where all hidden
-        activations transform as `σ(x) -> a * σ(b * x)`, where `a`, `b` are
-        trainable scalar parameters unique to each hidden neuron.
-
-        **Returns:**
-
-        A copy of the current network with adaptive activation parameters removed.
-        If the network already has adaptive activation disabled, a copy of the network
-        is returned without modification.
-
-        Note that this method wipes out the adaptive activation parameters (on the
-        returned copy) to minimize unnecessary memory use. If this function is called,
-        followed by `enable_adaptive_activations`, those parameters will not revert to
-        what they previously were prior to calling this method.
-        """
-        # If already disabled, return a copy of the network
-        if not self.use_adaptive_activations:
-            return self.copy()
-
-        # Return copy of network with adaptive activation parameters wiped out
-        return tree_at(
-            lambda network: (
-                network.use_adaptive_activations,
-                network.adaptive_activation_params,
-            ),
-            self,
-            (False, [jnp.nan] * self.num_topo_batches),
-        )
 
     def set_dropout_p(self, dropout_p: Union[float, Mapping[Any, float]]) -> None:
         """Set the per-neuron dropout probabilities.
@@ -1080,8 +767,10 @@ class NeuralNetwork(Module):
             assert isinstance(dropout_p, Mapping)
             _dropout_p = np.array(self._dropout_p)
             for (n, d) in dropout_p.items():
-                assert n in self.neuron_to_id
-                assert isinstance(d, float)
+                if n not in self.graph.nodes:
+                    raise ValueError(f"'{n}' is not present in the network.")
+                if not isinstance(d, float):
+                    raise TypeError(f"Invalid dropout value of {d} for neuron {n}.")
                 _dropout_p[self.neuron_to_id[n]] = d
                 dropout_dict[n] = d
             _dropout_p = jnp.array(_dropout_p, dtype=float)
@@ -1107,17 +796,15 @@ class NeuralNetwork(Module):
         graph = deepcopy(self.graph)
 
         edge_attrs = {}
-        edge_attrs_ = {(i, o): data for (i, o, data) in graph.edges(data=True)}
-        for (neuron, outputs) in self.adjacency_dict.items():
+        for (neuron, inputs) in self.adjacency_dict_inv.items():
+            if neuron in self.input_neurons:
+                continue
             topo_batch_idx, pos_idx = self.neuron_to_topo_batch_idx[neuron]
-            for output in outputs:
-                col_idx = output - self.min_index[topo_batch_idx]
+            for input in inputs:
+                col_idx = self.neuron_to_id[input] - self.min_index[topo_batch_idx]
                 assert self.masks[topo_batch_idx][pos_idx, col_idx]
                 weight = self.weights_and_biases[topo_batch_idx][pos_idx, col_idx]
-                edge_attrs[(neuron, output)] = {
-                    "weight": weight,
-                    **edge_attrs_[(neuron, output)],
-                }
+                edge_attrs[(input, neuron)] = {"weight": weight}
         nx.set_edge_attributes(graph, edge_attrs)
 
         return graph

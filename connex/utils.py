@@ -30,7 +30,7 @@ def _invert_dict(_dict: Dict[Any, List[Any]]) -> Dict[Any, List[Any]]:
                 _dict_inv[val].append(key)
             else:
                 _dict_inv[val] = [key]
-    for n in range(len(_dict)):
-        if n not in _dict_inv:
-            _dict_inv[n] = []
+    for k in _dict.keys():
+        if k not in _dict_inv:
+            _dict_inv[k] = []
     return _dict_inv
