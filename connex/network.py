@@ -450,8 +450,8 @@ class NeuralNetwork(Module):
             self._topo_batches = [jnp.array(tb, dtype=int) for tb in topo_batches[1:]]
             self._num_topo_batches = len(self._topo_batches)
 
-            # Map each neuron id to that neuron's topological batch and index within
-            # that batch
+            # Map each neuron id to that neuron's topological batch
+            # and index within that batch
             self._neuron_to_topo_batch_idx = {
                 int(n): (i, j)
                 for i, batch in enumerate(self._topo_batches)
