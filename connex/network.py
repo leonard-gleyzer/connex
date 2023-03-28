@@ -675,7 +675,7 @@ class NeuralNetwork(Module):
                 ] * self._num_topo_batches
 
             *akeys, key = jr.split(key, self._num_topo_batches + 1)
-            _attention_params_neuron = [
+            attention_params_neuron = [
                 jr.normal(
                     akeys[i],
                     (
@@ -690,9 +690,9 @@ class NeuralNetwork(Module):
             ]
             outer_product = vmap(lambda x: jnp.outer(x, x))
             mask_fn = jit(lambda m: jnp.where(outer_product(m), 0, jnp.inf))
-            _attention_masks_neuron = [mask_fn(mask) for mask in self._masks]
+            attention_masks_neuron = [mask_fn(mask) for mask in self._masks]
 
-            return _attention_params_neuron, _attention_masks_neuron
+            return attention_params_neuron, attention_masks_neuron
 
         def _initialize_adaptive_activation_params(key):
             if not self._use_adaptive_activations:
