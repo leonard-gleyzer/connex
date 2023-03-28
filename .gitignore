@@ -7,5 +7,6 @@ dist
 site
 build
 
+tests/__init__.py
 scratch.py
 TODO

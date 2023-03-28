@@ -1,12 +1,14 @@
+from . import nn
 from .network import NeuralNetwork
 from .plasticity import (
+    _get_id_mappings_old_new,
     add_connections,
+    add_hidden_neurons,
+    add_input_neurons,
+    add_output_neurons,
     remove_connections,
-    add_neurons,
-    remove_neurons
+    remove_neurons,
 )
-
-from . import nn
 
 
 __version__ = "0.1.4"

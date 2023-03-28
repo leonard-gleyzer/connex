@@ -347,14 +347,14 @@ class NeuralNetwork(Module):
     def _apply_activation(self, id: Array, affine: Array, ada_params: Array) -> Array:
         """Function for a single neuron to apply its activation."""
         ones = jnp.ones((2,))
-        gain, amplification = lax.cond(
+        a, b = lax.cond(
             self._use_adaptive_activations, lambda: ada_params * ones, lambda: ones
         )
         _expand = ft.partial(jnp.expand_dims, axis=0)
         output = lax.cond(
             jnp.isin(id, self._output_neurons_id),
             lambda: _expand(affine),
-            lambda: self._hidden_activation(_expand(affine * gain)) * amplification,
+            lambda: self._hidden_activation(_expand(affine * b)) * a,
         )
         return jnp.squeeze(output)
 
@@ -450,6 +450,8 @@ class NeuralNetwork(Module):
             self._topo_batches = [jnp.array(tb, dtype=int) for tb in topo_batches[1:]]
             self._num_topo_batches = len(self._topo_batches)
 
+            # Map each neuron id to that neuron's topological batch and index within
+            # that batch
             self._neuron_to_topo_batch_idx = {
                 int(n): (i, j)
                 for i, batch in enumerate(self._topo_batches)
@@ -661,7 +663,7 @@ class NeuralNetwork(Module):
 
             *akeys, key = jr.split(key, self._num_topo_batches + 1)
             return [
-                jr.normal(
+                jr.normal(  # query, key, value
                     akeys[i], (3, self._topo_lengths[i], self._topo_lengths[i] + 1)
                 )
                 * 0.1
@@ -680,7 +682,7 @@ class NeuralNetwork(Module):
                     akeys[i],
                     (
                         self._topo_sizes[i],
-                        3,
+                        3,  # query, key, value
                         self._topo_lengths[i],
                         self._topo_lengths[i] + 1,
                     ),
