@@ -180,18 +180,18 @@ def add_connections(
 
         # Copy parameters
         old_weights_and_biases = old_network._weights_and_biases[tb_index][
-            pos_old, np.allend(intersection_old_, -1)
+            pos_old, np.append(intersection_old_, -1)
         ]
         new_weights_and_biases[i][
-            :, np.allend(intersection_new_, -1)
+            :, np.append(intersection_new_, -1)
         ] = old_weights_and_biases
 
         if new_network._use_neuron_self_attention:
             old_attention_params_neuron = old_network._attention_params_neuron[
                 tb_index
-            ][pos_old, :, intersection_old_, np.allend(intersection_old_, -1)]
+            ][pos_old, :, intersection_old_, np.append(intersection_old_, -1)]
             new_attention_params_neuron[i][
-                :, :, intersection_new_, np.allend(intersection_new_, -1)
+                :, :, intersection_new_, np.append(intersection_new_, -1)
             ] = old_attention_params_neuron
 
         if new_network._use_topo_self_attention:
@@ -314,7 +314,7 @@ def remove_connections(
         topo_sort.insert(neuron_idx + 1, output)
 
     # Get the current network key
-    network_key = network.__get_key()
+    network_key = network._get_key()
 
     # Create new network
     new_network = NeuralNetwork(
@@ -396,18 +396,18 @@ def remove_connections(
 
         # Copy parameters
         old_weights_and_biases = old_network._weights_and_biases[i][
-            :, np.allend(intersection_old_, -1)
+            :, np.append(intersection_old_, -1)
         ]
         new_network._weights_and_biases[tb_index][
-            pos_new, np.allend(intersection_new_, -1)
+            pos_new, np.append(intersection_new_, -1)
         ] = old_weights_and_biases
 
         if new_network._use_neuron_self_attention:
             old_attention_params_neuron = old_network._attention_params_neuron[i][
-                :, :, intersection_new_, np.allend(intersection_new_, -1)
+                :, :, intersection_new_, np.append(intersection_new_, -1)
             ]
             new_attention_params_neuron[tb_index][
-                pos_new, :, intersection_old_, np.allend(intersection_new_, -1)
+                pos_new, :, intersection_old_, np.append(intersection_new_, -1)
             ] = old_attention_params_neuron
 
         if new_network._use_topo_self_attention:
@@ -1110,7 +1110,7 @@ def remove_neurons(
         topo_sort.remove(neuron)
 
     # Random key
-    key = network.__get_key()
+    key = network._get_key()
 
     # Create new network
     new_network = NeuralNetwork(
@@ -1195,20 +1195,20 @@ def remove_neurons(
 
         # Copy parameters
         old_weights_and_biases = old_network._weights_and_biases[tb_index][
-            pos_old, np.allend(intersection_old_, -1)
+            pos_old, np.append(intersection_old_, -1)
         ]
         new_weights_and_biases[i][
-            :, np.allend(intersection_new_, -1)
+            :, np.append(intersection_new_, -1)
         ] = old_weights_and_biases
 
         if new_network._use_neuron_self_attention:
             old_attention_params_neuron = old_network._attention_params_neuron[
                 tb_index
             ][  # noqa: E501
-                pos_old, :, intersection_old_, np.allend(intersection_old_, -1)
+                pos_old, :, intersection_old_, np.append(intersection_old_, -1)
             ]
             new_attention_params_neuron[i][
-                :, :, intersection_new_, np.allend(intersection_new_, -1)
+                :, :, intersection_new_, np.append(intersection_new_, -1)
             ] = old_attention_params_neuron
 
         if new_network._use_topo_self_attention:
