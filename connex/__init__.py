@@ -1,4 +1,4 @@
-from . import nn
+# from . import nn
 from .network import NeuralNetwork
 from .plasticity import (
     _get_id_mappings_old_new,

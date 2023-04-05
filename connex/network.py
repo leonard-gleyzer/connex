@@ -226,11 +226,11 @@ class NeuralNetwork(Module):
         # Dropout
         key = self._keygen() if key is None else key
         rand = jr.uniform(key, self._dropout_array.shape, minval=0, maxval=1)
-        dropout_keep = jnp.greater(rand, self._dropout_array)
+        dropout_mask = jnp.greater(rand, self._dropout_array)
 
         # Set input values
         values = values.at[self._input_neurons_id].set(
-            x * dropout_keep[self._input_neurons_id]
+            x * dropout_mask[self._input_neurons_id]
         )
 
         # Forward pass in topological batch order
@@ -285,7 +285,7 @@ class NeuralNetwork(Module):
                 vmap(self._apply_activation, in_axes=[0, 0, None])(
                     tb, affine, ada_params
                 )
-                * dropout_keep[tb]
+                * dropout_mask[tb]
             )
 
             # Set new values
@@ -303,7 +303,7 @@ class NeuralNetwork(Module):
         """Function for a topo batch to standardize its inputs, followed by a
         learnable elementwise-affine transformation.
         """
-        gamma, beta = norm_params[0], norm_params[1]
+        gamma, beta = norm_params[:, 0], norm_params[:, 1]
         return lax.cond(
             jnp.size(vals) > 1,  # Don't standardize if there is only one neuron
             lambda: jnn.standardize(vals) * gamma + beta,
@@ -399,7 +399,7 @@ class NeuralNetwork(Module):
 
             if not input_neurons or not output_neurons:
                 raise ValueError(
-                    "`input_neurons` and `_output_neurons` must be nonempty sequences."
+                    "`input_neurons` and `output_neurons` must be nonempty sequences."
                 )
 
             input_output_intersection = set(input_neurons) & set(output_neurons)
@@ -413,6 +413,7 @@ class NeuralNetwork(Module):
                 topo_sort = list(nx.lexicographical_topological_sort(graph))
             else:
                 # Check if provided topo_sort is valid
+                graph = nx.DiGraph(graph)
                 for neuron in topo_sort:
                     if graph.in_degree(neuron):
                         raise ValueError(f"Invalid `topo_sort` at neuron {neuron}.")
@@ -653,7 +654,7 @@ class NeuralNetwork(Module):
 
             *nkeys, key = jr.split(key, self._num_topo_batches + 1)
             return [
-                jr.normal(nkeys[i], (2, self._topo_lengths[i])) * 0.1 + 1
+                jr.normal(nkeys[i], (self._topo_lengths[i], 2)) * 0.1 + 1
                 for i in range(self._num_topo_batches)
             ]
 

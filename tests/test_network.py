@@ -21,7 +21,7 @@ class TestNeuralNetwork:
         graph: nx.DiGraph,
         input_neurons: Sequence[Any],
         output_neurons: Sequence[Any],
-        _hidden_activation: Callable = jnn.silu,
+        hidden_activation: Callable = jnn.silu,
         output_transformation: Callable = lambda x: x,
         dropout_p: Union[float, Mapping[Any, float]] = 0.0,
         use_topo_norm: bool = False,
@@ -36,7 +36,7 @@ class TestNeuralNetwork:
             graph,
             input_neurons,
             output_neurons,
-            _hidden_activation,
+            hidden_activation,
             output_transformation,
             dropout_p,
             use_topo_norm,
@@ -51,6 +51,7 @@ class TestNeuralNetwork:
     def test_simple_dag(self):
         graph = nx.DiGraph()
         graph.add_edges_from([(0, 1), (1, 2), (2, 3), (3, 4)])
+        graph_copy = deepcopy(graph)
         input_neurons = [0]
         output_neurons = [4]
 
@@ -59,6 +60,10 @@ class TestNeuralNetwork:
         assert nn._input_neurons == input_neurons
         assert nn._output_neurons == output_neurons
         assert nn._hidden_neurons == [1, 2, 3]
+        assert nn._graph.graph == graph_copy.graph
+        assert nn._graph.nodes == graph_copy.nodes
+        assert nn._graph.edges == graph_copy.edges
+        assert nn._graph.adj == graph_copy.adj
 
     def test_cycle_raises_value_error(self):
         graph = nx.DiGraph()
@@ -175,25 +180,24 @@ class TestNeuralNetwork:
         graph = nx.DiGraph()
         graph.add_edges_from([(0, 1), (1, 2), (2, 3), (3, 4)])
         self.create_test_neural_network(
-            graph, [0], [4], _hidden_activation=jnp.tanh, output_transformation=jnp.exp
+            graph, [0], [4], hidden_activation=jnp.tanh, output_transformation=jnp.exp
         )
 
-    def test_invalid__hidden_activation(self):
+    def test_invalid_hidden_activation(self):
         graph = nx.DiGraph()
         graph.add_edges_from([(0, 1), (1, 2), (2, 3), (3, 4)])
 
-        def invalid__hidden_activation(x):
+        def invalid_hidden_activation(x):
             return jnp.array([1, 2, 3])
 
         with pytest.raises(
             ValueError, match=r"Activation function output must have shape"
         ):
-
             self.create_test_neural_network(
                 graph,
                 [0],
                 [4],
-                _hidden_activation=invalid__hidden_activation,
+                hidden_activation=invalid_hidden_activation,
                 output_transformation=jnp.exp,
             )
 
@@ -207,24 +211,22 @@ class TestNeuralNetwork:
         with pytest.raises(
             ValueError, match=r"Activation function output must have shape"
         ):
-
             self.create_test_neural_network(
                 graph, [0], [4], output_transformation=invalid_output_transformation
             )
 
-    def test__hidden_activation_with_exception(self):
+    def test_hidden_activation_with_exception(self):
         graph = nx.DiGraph()
         graph.add_edges_from([(0, 1), (1, 2), (2, 3), (3, 4)])
 
-        def _hidden_activation_with_exception(x):
+        def hidden_activation_with_exception(x):
             raise ValueError("Something went wrong!")
 
         with pytest.raises(
             Exception, match=r"Exception caught when checking activation function"
         ):
-
             self.create_test_neural_network(
-                graph, [0], [4], _hidden_activation=_hidden_activation_with_exception
+                graph, [0], [4], hidden_activation=hidden_activation_with_exception
             )
 
     def test_output_transformation_with_exception(self):
@@ -237,7 +239,6 @@ class TestNeuralNetwork:
         with pytest.raises(
             Exception, match=r"Exception caught when checking activation function"
         ):
-
             self.create_test_neural_network(
                 graph,
                 [0],
@@ -284,7 +285,7 @@ class TestNeuralNetwork:
         assert nn._use_topo_norm is True
         assert len(nn._topo_norm_params) == len(nn._topo_batches)
         for tn_params, tb in zip(nn._topo_norm_params, nn._topo_batches):
-            assert tn_params.shape == (2, len(tb))
+            assert tn_params.shape == (len(tb), 2)
 
     def test_set_parameters_topo_self_attention(self):
         graph = nx.DiGraph()
@@ -421,7 +422,7 @@ class TestNeuralNetwork:
         assert digraph.number_of_nodes() == network._graph.number_of_nodes()
         assert digraph.number_of_edges() == network._graph.number_of_edges()
 
-        for (neuron, inputs) in network._adjacency_dict_inv.items():
+        for neuron, inputs in network._adjacency_dict_inv.items():
             if neuron in network._input_neurons:
                 continue
             topo_batch_idx, pos_idx = network._neuron_to_topo_batch_idx[neuron]
@@ -472,14 +473,14 @@ class TestNeuralNetwork:
             graph, input_neurons, output_neurons, use_topo_norm=True
         )
 
-        norm_params = jnp.array([[1.0], [0.0]])
+        norm_params = jnp.array([[1.0, 0.0]])
         vals = jnp.array([1.0])
 
         normalized_vals = network._apply_topo_norm(norm_params, vals)
         expected_normalized_vals = jnp.array([1.0])
 
         assert jnp.allclose(normalized_vals, expected_normalized_vals)
-        norm_params = jnp.array([[1.0, 1.0], [0.0, 0.0]])
+        norm_params = jnp.array([[1.0, 0.0], [1.0, 0.0]])
         vals = jnp.array([1.0, 2.0])
 
         normalized_vals = network._apply_topo_norm(norm_params, vals)
@@ -531,7 +532,6 @@ class TestNeuralNetwork:
         attn_output = network._apply_neuron_self_attention(
             id, attn_params, attn_mask, vals
         )
-        print(attn_output)
         expected_attn_output = (
             jnn.softmax(jnp.array([[1.0, 2.0], [2.0, -jnp.inf]])) @ vals + vals
         )
@@ -600,7 +600,7 @@ class TestNeuralNetwork:
             graph,
             input_neurons,
             output_neurons,
-            _hidden_activation=eqx.nn.MLP(1, 1, 2, 2, key=jr.PRNGKey(0)),
+            hidden_activation=eqx.nn.MLP(1, 1, 2, 2, key=jr.PRNGKey(0)),
             dropout_p=0.5,
         )
         network_copy = deepcopy(network)

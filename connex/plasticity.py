@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Any, Mapping, Optional, Sequence, Tuple
 
 import equinox as eqx
@@ -5,24 +6,30 @@ import jax.numpy as jnp
 import jax.random as jr
 import networkx as nx
 import numpy as np
+from icecream import ic
 
 from .network import NeuralNetwork
+
+
+ic.disable()
 
 
 def _get_id_mappings_old_new(
     old_network: NeuralNetwork, new_network: NeuralNetwork
 ) -> Tuple[np.ndarray, np.ndarray]:
-    old_neurons, new_neurons = old_network._graph.nodes, new_network._graph.nodes
-    ids_old_to_new = np.empty((old_network._num_neurons,), dtype=int)
+    old_neurons, new_neurons = old_network._graph.nodes(), new_network._graph.nodes()
+    ids_old_to_new = -np.ones((old_network._num_neurons,), dtype=int)
     for neuron in old_neurons:
-        old_id = old_network._neuron_to_id[neuron]
-        new_id = new_network._neuron_to_id[neuron] if neuron in new_neurons else -1
-        ids_old_to_new[old_id] = new_id
-    ids_new_to_old = np.empty((new_network._num_neurons,), dtype=int)
+        if neuron in new_neurons:
+            old_id = old_network._neuron_to_id[neuron]
+            new_id = new_network._neuron_to_id[neuron]
+            ids_old_to_new[old_id] = new_id
+    ids_new_to_old = -np.ones((new_network._num_neurons,), dtype=int)
     for neuron in new_neurons:
-        new_id = new_network._neuron_to_id[neuron]
-        old_id = old_network._neuron_to_id[neuron] if neuron in old_neurons else -1
-        ids_new_to_old[new_id] = old_id
+        if neuron in old_neurons:
+            new_id = new_network._neuron_to_id[neuron]
+            old_id = old_network._neuron_to_id[neuron]
+            ids_new_to_old[new_id] = old_id
     return ids_old_to_new, ids_new_to_old
 
 
@@ -32,7 +39,7 @@ def add_connections(
     *,
     key: Optional[jr.PRNGKey] = None,
 ) -> NeuralNetwork:
-    """Add connections to the network._
+    """Add connections to the network.
 
     **Arguments:**
 
@@ -50,17 +57,17 @@ def add_connections(
     """
     # If there is nothing to change, return the network as given
     if len(connections) == 0:
-        return network
+        return deepcopy(network)
 
     # Check that all new connections are between neurons actually in the network
     # and that no neuron outputs to an input neuron
     existing_neurons = network._graph.nodes
     for input, outputs in connections.items():
         if input not in existing_neurons:
-            raise ValueError(f"Neuron {input} does not exist in the network._")
+            raise ValueError(f"Neuron {input} does not exist in the network.")
         for output in outputs:
             if output not in existing_neurons:
-                raise ValueError(f"Neuron {output} does not exist in the network._")
+                raise ValueError(f"Neuron {output} does not exist in the network.")
             if output in network._input_neurons:
                 raise ValueError(
                     f"""
@@ -72,30 +79,69 @@ def add_connections(
 
     # Update connectivity information
     new_graph = nx.DiGraph(network._graph)
-    for (input, outputs) in connections.items():
-        new_edges = [(input, output) for output in outputs]
-        new_graph.add_edges_from(new_edges)
-
-    # Update topological sort (reference: https://stackoverflow.com/a/24764451)
-    def _add_edge_rec(topo_sort, input, output, visited={}):
-        input_index = topo_sort.index(input)
-        output_index = topo_sort.index(output)
-        assert input_index != output_index
-        if input_index < output_index:
-            return topo_sort, visited
-        if output in visited:
-            raise ValueError(f"Edge ({input}, {output}) creates a cycle.")
-        topo_sort.remove(output)
-        topo_sort.insert(input_index, output)
-        visited.add(output)
-        new_edges = network._graph.out_edges(output)
-        for (input_, output_) in new_edges:
-            topo_sort, visited = _add_edge_rec(topo_sort, input_, output_, visited)
-
-    topo_sort = network._topo_sort
+    new_edges = []
     for input, outputs in connections.items():
-        for output in outputs:
-            topo_sort, _ = _add_edge_rec(topo_sort, input, output)
+        new_edges += [(input, output) for output in outputs]
+    new_graph.add_edges_from(new_edges)
+
+    # # Update topological sort (reference: https://stackoverflow.com/a/24764451)
+    # def _add_edge(topo_sort, input, output):
+    #     visited = {input}
+    #     stack = [(input, output)]
+
+    #     while stack:
+    #         input_, output_ = stack.pop()
+    #         input_index = topo_sort.index(input_)
+    #         output_index = topo_sort.index(output_)
+
+    #         if input_index == output_index:
+    #             raise ValueError(f"Self-loop detected at neuron {output_}.")
+    #         if input_index < output_index:
+    #             continue
+    #         if output_ in visited:
+    #             raise ValueError(f"Edge ({input_}, {output_}) creates a cycle.")
+
+    #         visited.add(output_)
+    #         topo_sort.remove(output_)
+    #         topo_sort.insert(input_index, output_)
+
+    #         new_edges = network._graph.out_edges(output_)
+    #         stack.extend(new_edges)
+
+    #     return topo_sort
+
+    # topo_sort = deepcopy(network._topo_sort)
+    # for input, outputs in connections.items():
+    #     for output in outputs:
+    #         topo_sort = _add_edge(topo_sort, input, output)
+
+    def _update_topo_sort(topo_sort: list, new_edges: list) -> list:
+        # Find affected nodes
+        affected_nodes = set()
+        for u, v in new_edges:
+            affected_nodes.add(u)
+            affected_nodes.add(v)
+
+        # Identify the positions of the affected nodes in the topo_sort list
+        node_positions = network._neuron_to_id
+
+        # For each affected node, update its position in topo_sort
+        for node in affected_nodes:
+            pos = node_positions[node]
+            while pos > 0 and new_graph.in_degree(
+                topo_sort[pos - 1]
+            ) > new_graph.in_degree(node):
+                # Swap the positions of the current node and the previous node
+                topo_sort[pos], topo_sort[pos - 1] = topo_sort[pos - 1], topo_sort[pos]
+                # Update the node_positions dictionary
+                node_positions[topo_sort[pos]] = pos
+                node_positions[topo_sort[pos - 1]] = pos - 1
+                pos -= 1
+
+        return topo_sort
+
+    topo_sort = deepcopy(network._topo_sort)
+    topo_sort = _update_topo_sort(topo_sort, new_edges)
 
     # Random key
     key = key if key is not None else jr.PRNGKey(0)
@@ -142,7 +188,7 @@ def add_connections(
 
         # Get the index of the old network topo batch `tb_old` is a subset of.
         # Note that each topo batch in the new network is a subset of a topo batch
-        # in the old network._
+        # in the old network.
         tb_index, _ = old_network._neuron_to_topo_batch_idx[tb_old[0]]
 
         # Make sure it is actually a subset
@@ -170,8 +216,8 @@ def add_connections(
         intersection_old = input_indices_old[
             np.in1d(input_indices_old, intersection_old)
         ]
-        intersection_old_ = intersection_old - min_old
         intersection_new = ids_old_to_new[intersection_old]
+        intersection_old_ = intersection_old - min_old
         intersection_new_ = intersection_new - min_new
 
         # Get the respective neuron positions within the old topological batches
@@ -179,8 +225,8 @@ def add_connections(
         pos_old = np.array(pos_old, dtype=int)
 
         # Copy parameters
-        old_weights_and_biases = old_network._weights_and_biases[tb_index][
-            pos_old, np.append(intersection_old_, -1)
+        old_weights_and_biases = old_network._weights_and_biases[tb_index][pos_old][
+            :, np.append(intersection_old_, -1)
         ]
         new_weights_and_biases[i][
             :, np.append(intersection_new_, -1)
@@ -189,24 +235,27 @@ def add_connections(
         if new_network._use_neuron_self_attention:
             old_attention_params_neuron = old_network._attention_params_neuron[
                 tb_index
-            ][pos_old, :, intersection_old_, np.append(intersection_old_, -1)]
+            ][pos_old][:, :, intersection_old_, :][
+                :, :, :, np.append(intersection_old_, -1)
+            ]
+
             new_attention_params_neuron[i][
-                :, :, intersection_new_, np.append(intersection_new_, -1)
+                :, :, intersection_new_.reshape(-1, 1), np.append(intersection_new_, -1)
             ] = old_attention_params_neuron
 
         if new_network._use_topo_self_attention:
             old_attention_params_topo = old_network._attention_params_topo[tb_index][
-                pos_old, intersection_old_
-            ]
+                :, intersection_old_, :
+            ][:, :, np.append(intersection_old_, -1)]
             new_attention_params_topo[i][
-                :, intersection_new_
+                :, intersection_new_.reshape(-1, 1), np.append(intersection_new_, -1)
             ] = old_attention_params_topo
 
         if new_network._use_topo_norm:
             old_topo_norm_params = old_network._topo_norm_params[tb_index][
-                pos_old, intersection_old_
+                intersection_old_
             ]
-            new_topo_norm_params[i][:, intersection_new_] = old_topo_norm_params
+            new_topo_norm_params[i][intersection_new_] = old_topo_norm_params
 
         if new_network._use_adaptive_activations:
             old_adaptive_activation_params = old_network._adaptive_activation_params[
@@ -260,7 +309,7 @@ def remove_connections(
     network: NeuralNetwork,
     connections: Mapping[Any, Sequence[Any]],
 ) -> NeuralNetwork:
-    """Remove connections from the network._
+    """Remove connections from the network.
 
     **Arguments:**
 
@@ -289,7 +338,7 @@ def remove_connections(
 
     # Update connectivity information
     new_graph = nx.DiGraph(network._graph)
-    for (input, outputs) in connections.items():
+    for input, outputs in connections.items():
         edges_to_remove = [(input, output) for output in outputs]
         new_graph.remove_edges_from(edges_to_remove)
 
@@ -480,7 +529,7 @@ def add_hidden_neurons(
     *,
     key: Optional[jr.PRNGKey] = None,
 ) -> NeuralNetwork:
-    """Add hidden neurons to the network._ Note that this function only adds neurons
+    """Add hidden neurons to the network. Note that this function only adds neurons
     themselves, not any connections associated with the new neurons, effectively
     adding them as isolated nodes in the graph. Use `cnx.add_connections` after this
     function has been called to add the desired connections.
@@ -489,8 +538,8 @@ def add_hidden_neurons(
 
     - `network`: The `NeuralNetwork` to add neurons to
     - `new_hidden_neurons`: A sequence of new hidden neurons (more specifically, their
-        identifiers/names) to add to the network._ These must be unique, i.e. cannot
-        already exist in the network._ These must also specifically be hidden neurons.
+        identifiers/names) to add to the network. These must be unique, i.e. cannot
+        already exist in the  These must also specifically be hidden neurons.
         To add input or output neurons, use `cnx.add_input_neurons` or
         `cnx.add_output_neurons`.
     - `key`: The `jax.random.PRNGKey` used for new parameter initialization.
@@ -509,7 +558,7 @@ def add_hidden_neurons(
     existing_neurons = network._graph.nodes
     for neuron in new_hidden_neurons:
         if neuron in existing_neurons:
-            raise ValueError(f"Neuron {neuron} already exists in the network._")
+            raise ValueError(f"Neuron {neuron} already exists in the network.")
 
     # Update graph information
     new_graph = nx.DiGraph(network._graph)
@@ -675,7 +724,7 @@ def add_output_neurons(
     *,
     key: Optional[jr.PRNGKey] = None,
 ) -> NeuralNetwork:
-    """Add output neurons to the network._ Note that this function only adds neurons
+    """Add output neurons to the network. Note that this function only adds neurons
     themselves, not any connections associated with the new neurons, effectively
     adding them as isolated nodes in the graph. Use `cnx.add_connections` after this
     function has been called to add any desired connections.
@@ -684,8 +733,8 @@ def add_output_neurons(
 
     - `network`: The `NeuralNetwork` to add neurons to
     - `new_output_neurons`: A sequence of new output neurons (more specifically, their
-        identifiers/names) to add to the network._ These must be unique, i.e. cannot
-        already exist in the network._ These must also specifically be output neurons.
+        identifiers/names) to add to the network. These must be unique, i.e. cannot
+        already exist in the network. These must also specifically be output neurons.
         To add input or output neurons, use `cnx.add_input_neurons` or
         `cnx.add_output_neurons`.
     - `key`: The `jax.random.PRNGKey` used for new parameter initialization.
@@ -708,7 +757,7 @@ def add_output_neurons(
     existing_neurons = network._graph.nodes
     for neuron in new_output_neurons:
         if neuron in existing_neurons:
-            raise ValueError(f"Neuron {neuron} already exists in the network._")
+            raise ValueError(f"Neuron {neuron} already exists in the network.")
 
     # Update graph information
     new_graph = nx.DiGraph(network._graph)
@@ -870,7 +919,7 @@ def add_input_neurons(
     *,
     key: Optional[jr.PRNGKey] = None,
 ) -> NeuralNetwork:
-    """Add input neurons to the network._ Note that this function only adds neurons
+    """Add input neurons to the network. Note that this function only adds neurons
     themselves, not any connections associated with the new neurons, effectively adding
     them as isolated nodes in the graph. Use `cnx.add_connections` after this function
     has been called to add the desired connections.
@@ -879,8 +928,8 @@ def add_input_neurons(
 
     - `network`: The `NeuralNetwork` to add neurons to
     - `new_input_neurons`: A sequence of new input neurons (more specifically, their
-        identifiers/names) to add to the network._ These must be unique, i.e. cannot
-        already exist in the network._ These must also specifically be input neurons.
+        identifiers/names) to add to the network. These must be unique, i.e. cannot
+        already exist in the network. These must also specifically be input neurons.
         To add hidden or output neurons, use `cnx.add_hidden_neurons` or
         `cnx.add_output_neurons`.
     - `key`: The `jax.random.PRNGKey` used for new parameter initialization.
@@ -902,7 +951,7 @@ def add_input_neurons(
     existing_neurons = network._graph.nodes
     for neuron in new_input_neurons:
         if neuron in existing_neurons:
-            raise ValueError(f"Neuron {neuron} already exists in the network._")
+            raise ValueError(f"Neuron {neuron} already exists in the network.")
 
     # Update graph information
     new_graph = nx.DiGraph(network._graph)
@@ -1058,13 +1107,13 @@ def remove_neurons(
     network: NeuralNetwork,
     neurons: Sequence[Any],
 ) -> NeuralNetwork:
-    """Remove neurons and any of their incoming/outgoing connections from the network._
+    """Remove neurons and any of their incoming/outgoing connections from the network.
 
     **Arguments:**
 
     - `network`: The `NeuralNetwork` to add neurons to
     - `neurons`: A sequence of neurons (more specifically, their identifiers/names) to
-        remove from the network._ These can be input, hidden, or output neurons.
+        remove from the network. These can be input, hidden, or output neurons.
 
     **Returns:**
 
@@ -1079,7 +1128,7 @@ def remove_neurons(
     existing_neurons = network._graph.nodes
     for neuron in neurons:
         if neuron not in existing_neurons:
-            raise ValueError(f"Neuron {neuron} does not exist in the network._")
+            raise ValueError(f"Neuron {neuron} does not exist in the network.")
 
     # Remove all incoming and outgoing connections of all neurons to be removed
     edges_to_remove = {}
@@ -1155,7 +1204,7 @@ def remove_neurons(
         assert np.all(tb_old >= 0)
 
         # Get the index of the topo batch `tb_old` is a subset of. Note that each
-        # topo batch in the new network is a subset of a topo batch in the old network._
+        # topo batch in the new network is a subset of a topo batch in the old network.
         tb_index, _ = old_network._neuron_to_topo_batch_idx[tb_old[0]]
 
         # Make sure it is actually a subset
@@ -1204,9 +1253,7 @@ def remove_neurons(
         if new_network._use_neuron_self_attention:
             old_attention_params_neuron = old_network._attention_params_neuron[
                 tb_index
-            ][  # noqa: E501
-                pos_old, :, intersection_old_, np.append(intersection_old_, -1)
-            ]
+            ][pos_old, :, intersection_old_, np.append(intersection_old_, -1)]
             new_attention_params_neuron[i][
                 :, :, intersection_new_, np.append(intersection_new_, -1)
             ] = old_attention_params_neuron
