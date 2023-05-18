@@ -77,7 +77,7 @@ class NeuralNetwork(Module):
         r"""**Arguments**:
 
         - `graph`: A `networkx.DiGraph` representing the DAG structure of the neural
-            network.
+            network. All nodes of the graph must have the same type.
         - `input_neurons`: An `Sequence` of nodes from `graph` indicating the input
             neurons. The order here matters, as the input data will be passed into
             the input neurons in the order specified here.
@@ -410,7 +410,7 @@ class NeuralNetwork(Module):
 
         def _validate_topological_sort(graph, topo_sort, input_neurons, output_neurons):
             if topo_sort is None:
-                topo_sort = list(nx.lexicographical_topological_sort(graph))
+                topo_sort = list(nx.topological_sort(graph))
             else:
                 # Check if provided topo_sort is valid
                 graph = nx.DiGraph(graph)
@@ -428,7 +428,6 @@ class NeuralNetwork(Module):
             for n in input_neurons + output_neurons:
                 topo_sort.remove(n)
             topo_sort = input_neurons + topo_sort + output_neurons
-
             self._neuron_to_id = {neuron: id for (id, neuron) in enumerate(topo_sort)}
 
             return topo_sort
@@ -590,8 +589,12 @@ class NeuralNetwork(Module):
                     ]
                     for i in tb
                 ]
-                min_indices.append(np.min([np.min(locs) for locs in input_locs]))
-                max_indices.append(np.max([np.max(locs) for locs in input_locs]))
+                min_indices.append(
+                    np.min([np.min(locs) for locs in input_locs if locs])
+                )
+                max_indices.append(
+                    np.max([np.max(locs) for locs in input_locs if locs])
+                )
             return np.array(min_indices, dtype=int), np.array(max_indices, dtype=int)
 
         self._min_index, self._max_index = _compute_min_max_indices()
