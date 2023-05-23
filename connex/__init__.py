@@ -1,6 +1,6 @@
 # from . import nn
-from .network import NeuralNetwork
-from .plasticity import (
+from ._network import NeuralNetwork
+from ._plasticity import (
     _get_id_mappings_old_new,
     add_connections,
     add_hidden_neurons,

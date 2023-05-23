@@ -1,2 +1,2 @@
-from .dense_mlp import DenseMLP
-from .mlp import MLP
+from ._dense_mlp import DenseMLP
+from ._mlp import MLP
