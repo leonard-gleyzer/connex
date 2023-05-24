@@ -33,7 +33,7 @@ build-backend = "hatchling.build"
 include = ["connex/*"]
 
 [tool.pytest.ini_options]
-addopts = "--jaxtyping-packages=equinox,beartype.beartype(conf=beartype.BeartypeConf(strategy=beartype.BeartypeStrategy.On))"
+addopts = "--jaxtyping-packages=equinox"
 
 [tool.ruff]
 select = ["E", "F", "I001"]
