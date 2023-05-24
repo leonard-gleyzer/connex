@@ -1,3 +1,5 @@
+import importlib.metadata
+
 from . import nn as nn
 from ._network import NeuralNetwork as NeuralNetwork
 from ._plasticity import (
@@ -10,4 +12,4 @@ from ._plasticity import (
 )
 
 
-__version__ = "0.1.4"
+__version__ = importlib.metadata.version("connex")
