@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 
 from connex import (
-    _get_id_mappings_old_new,
     add_connections,
     add_hidden_neurons,
     add_input_neurons,
@@ -13,6 +12,7 @@ from connex import (
     remove_connections,
     remove_neurons,
 )
+from connex._plasticity import _get_id_mappings_old_new
 
 
 def test_get_id_mappings_old_new():

@@ -24,3 +24,10 @@ classifiers = [
 ]
 urls = {repository = "https://github.com/leonard-gleyzer/connex" }
 dependencies = ["equinox>=0.10.4", "jax>=0.4.4"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = ["connex/*"]
