@@ -7,7 +7,7 @@ import jax.random as jr
 import networkx as nx
 import numpy as np
 
-from . import NeuralNetwork
+from ._network import NeuralNetwork
 
 
 def _get_id_mappings_old_new(
@@ -337,9 +337,6 @@ def remove_connections(
                     topo_sort.insert(i, output)
                     break
 
-    # Get the current network key
-    network_key = network._get_key()
-
     # Create new network
     new_network = NeuralNetwork(
         new_graph,
@@ -353,7 +350,6 @@ def remove_connections(
         network._use_neuron_self_attention,
         network._use_adaptive_activations,
         topo_sort=deepcopy(topo_sort),
-        key=network_key,
     )
 
     old_network = network
@@ -1055,9 +1051,6 @@ def remove_neurons(
     for n in neurons:
         del dropout_dict[n]
 
-    # Random key
-    key = network._get_key()
-
     # Create new network
     new_network = NeuralNetwork(
         new_graph,
@@ -1071,7 +1064,6 @@ def remove_neurons(
         network._use_neuron_self_attention,
         network._use_adaptive_activations,
         topo_sort=topo_sort,
-        key=key,
     )
 
     old_network = network

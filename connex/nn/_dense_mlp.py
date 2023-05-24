@@ -6,7 +6,7 @@ import networkx as nx
 import numpy as np
 
 from .. import NeuralNetwork
-from ..utils import _identity
+from ._utils import _identity
 
 
 class DenseMLP(NeuralNetwork):
