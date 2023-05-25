@@ -160,10 +160,8 @@ class NeuralNetwork(Module):
                 ```
 
         - `topo_sort`: An optional sequence of neurons indicating a topological sort of
-            the graph. If `None`, a topological sort will be performed on the graph.
-            This may be time-consuming for large networks, which is why it is provided
-            as an optional argument. The provided topological sort will still be checked
-            that it is indeed a valid topological sort (which is far less time-consuming).
+            the graph. If `None`, a topological sort will be performed on the graph, which
+            may be time-consuming for some networks.
         - `key`: The `jax.random.PRNGKey` used for parameter initialization and dropout.
             Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
         """
