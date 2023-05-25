@@ -1,8 +1,5 @@
 <h1 align='center'>Connex</h1>
 
-
-# Getting Started
-
 Connex is a [JAX](https://github.com/google/jax) library built on [Equinox](https://github.com/patrick-kidger/equinox) whose aim is to allow for fine-grained, dynamic control of neural network topology. With Connex, you can
 
 - Turn any directed acyclic graph (DAG) into a trainable neural network.
@@ -116,4 +113,12 @@ Feedback is greatly appeciated!
 
 ## Citation
 
---8<-- "docs/citation.md"
+```bibtex
+@software{gleyzer2023connex,
+  author = {Leonard Gleyzer},
+  title = {{C}onnex: Fine-grained Control over Neural Network Topology in {JAX}},
+  url = {http://github.com/leonard-gleyzer/connex},
+  version = {0.2.0},
+  year = {2023},
+}
+```
