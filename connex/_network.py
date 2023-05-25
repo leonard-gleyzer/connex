@@ -375,7 +375,7 @@ class NeuralNetwork(Module):
                         f"`output_neurons` contains a neuron not in the network: {neuron}"  # noqa: E501
                     )
 
-            if not input_neurons or not output_neurons:
+            if not (len(input_neurons) and len(output_neurons)):
                 raise ValueError(
                     "`input_neurons` and `output_neurons` must be nonempty sequences."
                 )
@@ -403,7 +403,8 @@ class NeuralNetwork(Module):
 
             # Make sure input and output neurons are at the beginning and end of
             # topo_sort
-            topo_sort_ = deepcopy(topo_sort)
+            topo_sort_ = list(deepcopy(topo_sort))
+            input_neurons, output_neurons = list(input_neurons), list(output_neurons)
             for n in input_neurons + output_neurons:
                 topo_sort_.remove(n)
             topo_sort = input_neurons + topo_sort_ + output_neurons
