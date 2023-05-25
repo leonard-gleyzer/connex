@@ -1,10 +1,12 @@
 # Getting Started
 
-Connex is a [JAX](https://github.com/google/jax) library built on [Equinox](https://github.com/patrick-kidger/equinox) whose aim is to incorporate artificial analogues of biological neural network attributes into deep learning research and architecture design. Currently, this includes:
+Connex is a [JAX](https://github.com/google/jax) library built on [Equinox](https://github.com/patrick-kidger/equinox) that allows for fine-grained, dynamic control of neural network topology. With Connex, you can
 
-- **Complex Connectivity**: Turn any directed acyclic graph (DAG) into a trainable neural network.
-- **Plasticity**: Add and remove both connections and neurons at the individual level.
-- **Firing Modulation**: Set and modify dropout probabilities for all neurons individually.
+- Turn any directed acyclic graph (DAG) into a trainable neural network.
+- Add and remove both connections and neurons at the individual level.
+- Set and modify dropout probabilities for all neurons individually.
+- Easily toggle techniques such as normalization, adaptive activations, and self-attention.
+- Export a trained network to a NetworkX weighted digraph for network analysis.
 
 ## Installation
 
@@ -14,20 +16,19 @@ pip install connex
 
 ## Usage
 
-As a small example, let's create a trainable neural network from the following DAG
+As a tiny pedagogical example, let's create a trainable neural network from the following DAG
 
 ![dag](imgs/dag.png)
 
-with input neuron 0 and output neurons 3 and 11 (in that order), with a ReLU activation function for the hidden neurons:
+with input neuron 0 and output neurons 3 and 11 (in that order) and ReLU activation for the hidden neurons:
 
 ```python
 import connex as cnx
+import networkx as nx
 import jax.nn as jnn
 
-# Specify number of neurons
-num_neurons = 12
 
-# Build the adjacency dict
+# Create the graph
 adjacency_dict = {
     0: [1, 2, 3],
     1: [4],
@@ -40,6 +41,7 @@ adjacency_dict = {
     9: [11],
     10: [11]
 }
+graph = nx.DiGraph(adjacency_dict)
 
 # Specify the input and output neurons
 input_neurons = [0]
@@ -47,8 +49,7 @@ output_neurons = [3, 11]
 
 # Create the network
 network = cnx.NeuralNetwork(
-    num_neurons,
-    adjacency_dict, 
+    graph,
     input_neurons, 
     output_neurons,
     jnn.relu

@@ -505,8 +505,8 @@ def add_hidden_neurons(
 ) -> NeuralNetwork:
     """Add hidden neurons to the network. Note that this function only adds neurons
     themselves, not any connections associated with the new neurons, effectively
-    adding them as isolated nodes in the graph. Use `cnx.add_connections` after this
-    function has been called to add the desired connections.
+    adding them as isolated nodes in the graph. Use [`connex.add_connections`][]
+    after this function has been called to add the desired connections.
 
     **Arguments:**
 
@@ -514,8 +514,8 @@ def add_hidden_neurons(
     - `new_hidden_neurons`: A sequence of new hidden neurons (more specifically, their
         identifiers/names) to add to the network. These must be unique, i.e. cannot
         already exist in the  These must also specifically be hidden neurons.
-        To add input or output neurons, use `cnx.add_input_neurons` or
-        `cnx.add_output_neurons`.
+        To add input or output neurons, use [`connex.add_input_neurons`][] or
+        [`connex.add_output_neurons`][].
     - `key`: The `jax.random.PRNGKey` used for new parameter initialization.
         Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
 
@@ -686,8 +686,8 @@ def add_output_neurons(
 ) -> NeuralNetwork:
     """Add output neurons to the network. Note that this function only adds neurons
     themselves, not any connections associated with the new neurons, effectively
-    adding them as isolated nodes in the graph. Use `cnx.add_connections` after this
-    function has been called to add any desired connections.
+    adding them as isolated nodes in the graph. Use [`connex.add_connections`][]
+    after this function has been called to add any desired connections.
 
     **Arguments:**
 
@@ -695,8 +695,8 @@ def add_output_neurons(
     - `new_output_neurons`: A sequence of new output neurons (more specifically, their
         identifiers/names) to add to the network. These must be unique, i.e. cannot
         already exist in the network. These must also specifically be output neurons.
-        To add input or output neurons, use `cnx.add_input_neurons` or
-        `cnx.add_output_neurons`.
+        To add input or output neurons, use [`connex.add_input_neurons`][] or
+        [`connex.add_output_neurons`][].
     - `key`: The `jax.random.PRNGKey` used for new parameter initialization.
         Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
 
@@ -866,8 +866,8 @@ def add_input_neurons(
 ) -> NeuralNetwork:
     """Add input neurons to the network. Note that this function only adds neurons
     themselves, not any connections associated with the new neurons, effectively adding
-    them as isolated nodes in the graph. Use `cnx.add_connections` after this function
-    has been called to add the desired connections.
+    them as isolated nodes in the graph. Use [`connex.add_connections`][] after this
+    function has been called to add the desired connections.
 
     **Arguments:**
 
@@ -875,8 +875,8 @@ def add_input_neurons(
     - `new_input_neurons`: A sequence of new input neurons (more specifically, their
         identifiers/names) to add to the network. These must be unique, i.e. cannot
         already exist in the network. These must also specifically be input neurons.
-        To add hidden or output neurons, use `cnx.add_hidden_neurons` or
-        `cnx.add_output_neurons`.
+        To add hidden or output neurons, use [`connex.add_hidden_neurons`][] or
+        [`connex.add_output_neurons`][].
     - `key`: The `jax.random.PRNGKey` used for new parameter initialization.
         Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
 

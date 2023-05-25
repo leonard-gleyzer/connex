@@ -1,6 +1,6 @@
 <h1 align='center'>Connex</h1>
 
-Connex is a [JAX](https://github.com/google/jax) library built on [Equinox](https://github.com/patrick-kidger/equinox) whose aim is to allow for fine-grained, dynamic control of neural network topology. With Connex, you can
+Connex is a [JAX](https://github.com/google/jax) library built on [Equinox](https://github.com/patrick-kidger/equinox) that allows for fine-grained, dynamic control of neural network topology. With Connex, you can
 
 - Turn any directed acyclic graph (DAG) into a trainable neural network.
 - Add and remove both connections and neurons at the individual level.
