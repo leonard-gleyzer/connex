@@ -14,10 +14,7 @@ from ._utils import _identity, _invert_dict
 
 
 class NeuralNetwork(Module):
-    """
-    A neural network whose structure is specified by a DAG.
-    Create your model by inheriting from this.
-    """
+    """A neural network whose structure is specified by a DAG."""
 
     _weights_and_biases: List[Array]
     _hidden_activation: Callable
@@ -97,6 +94,7 @@ class NeuralNetwork(Module):
             version of Layer Norm,
 
             ??? cite
+
                 [Layer Normalization](https://arxiv.org/abs/1607.06450)
                 ```bibtex
                 @article{ba2016layer,
@@ -115,6 +113,7 @@ class NeuralNetwork(Module):
             inputs.
 
             ??? cite
+
                 [Attention is All You Need](https://arxiv.org/abs/1706.03762)
                 ```bibtex
                 @inproceedings{vaswani2017attention,
@@ -136,9 +135,8 @@ class NeuralNetwork(Module):
 
             !!! warning
 
-            Neuron-level self-attention will use significantly more memory than
-            than topo-level self-attention. You may notice training is slower with
-            this enabled.
+                Neuron-level self-attention will use significantly more memory than
+                than topo-level self-attention.
 
         - `use_adaptive_activations`: A bool indicating whether to use neuron-wise
             adaptive activations, where all hidden activations transform as
@@ -146,6 +144,7 @@ class NeuralNetwork(Module):
             unique to each neuron.
 
             ??? cite
+
                 [Locally adaptive activation functions with slope recovery term for
                  deep and physics-informed neural networks](https://arxiv.org/abs/1909.12228)  # noqa: E501
                 ```bibtex

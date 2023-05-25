@@ -5,7 +5,7 @@ import jax.random as jr
 import networkx as nx
 import numpy as np
 
-from .. import NeuralNetwork
+from .._network import NeuralNetwork
 from ._utils import _identity
 
 

@@ -1,6 +1,6 @@
 # Getting Started
 
-Connex is a small [JAX](https://github.com/google/jax) library built on [Equinox](https://github.com/patrick-kidger/equinox) whose aim is to incorporate artificial analogues of biological neural network attributes into deep learning research and architecture design. Currently, this includes:
+Connex is a [JAX](https://github.com/google/jax) library built on [Equinox](https://github.com/patrick-kidger/equinox) whose aim is to incorporate artificial analogues of biological neural network attributes into deep learning research and architecture design. Currently, this includes:
 
 - **Complex Connectivity**: Turn any directed acyclic graph (DAG) into a trainable neural network.
 - **Plasticity**: Add and remove both connections and neurons at the individual level.
@@ -16,7 +16,7 @@ pip install connex
 
 As a small example, let's create a trainable neural network from the following DAG
 
-![dag](https://www.mdpi.com/algorithms/algorithms-13-00256/article_deploy/html/images/algorithms-13-00256-g001.png)
+![dag](imgs/dag.png)
 
 with input neuron 0 and output neurons 3 and 11 (in that order), with a ReLU activation function for the hidden neurons:
 
@@ -109,3 +109,7 @@ That's all there is to it.  The new connections have been initialized with untra
 For more information about manipulating connectivity structure and the `NeuralNetwork` base class, please see the API section of the documentation. For examples of subclassing `NeuralNetwork`, please see `connex.nn`.
 
 Feedback is greatly appeciated!
+
+## Citation
+
+--8<-- "citation.md"

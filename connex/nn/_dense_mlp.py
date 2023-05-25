@@ -5,7 +5,7 @@ import jax.random as jr
 import networkx as nx
 import numpy as np
 
-from .. import NeuralNetwork
+from .._network import NeuralNetwork
 from ._utils import _identity
 
 
@@ -17,6 +17,7 @@ class DenseMLP(NeuralNetwork):
     layers, not just the most recent one, in a similar manner to DenseNet.
 
     ??? cite
+
         [Densely Connected Convolutional Networks](https://arxiv.org/abs/1608.06993)
         ```bibtex
         @article{ba2016layer,

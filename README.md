@@ -1,11 +1,15 @@
 <h1 align='center'>Connex</h1>
 
 
-Connex is a small [JAX](https://github.com/google/jax) library built on [Equinox](https://github.com/patrick-kidger/equinox) whose aim is to incorporate artificial analogues of biological neural network attributes into deep learning research and architecture design. Currently, this includes:
+# Getting Started
 
-- **Complex Connectivity**: Turn any directed acyclic graph (DAG) into a trainable neural network.
-- **Plasticity**: Add and remove both connections and neurons at the individual level.
-- **Firing Modulation**: Set and modify dropout probabilities for all neurons individually.
+Connex is a [JAX](https://github.com/google/jax) library built on [Equinox](https://github.com/patrick-kidger/equinox) whose aim is to allow for fine-grained, dynamic control of neural network topology. With Connex, you can
+
+- Turn any directed acyclic graph (DAG) into a trainable neural network.
+- Add and remove both connections and neurons at the individual level.
+- Set and modify dropout probabilities for all neurons individually.
+- Easily toggle techniques such as normalization, adaptive activations, and self-attention.
+- Export a trained network to a NetworkX weighted digraph for network analysis.
 
 ## Installation
 
@@ -13,26 +17,21 @@ Connex is a small [JAX](https://github.com/google/jax) library built on [Equinox
 pip install connex
 ```
 
-## Documentation
-
-Available at [https://leonard-gleyzer.github.io/connex/](https://leonard-gleyzer.github.io/connex/).
-
 ## Usage
 
-As a small example, let's create a trainable neural network from the following DAG 
+As a tiny pedagogical example, let's create a trainable neural network from the following DAG
 
-![dag](https://www.mdpi.com/algorithms/algorithms-13-00256/article_deploy/html/images/algorithms-13-00256-g001.png)
+![dag](docs/imgs/dag.png)
 
-with input neuron 0 and output neurons 3 and 11 (in that order), with a ReLU activation function for the hidden neurons:
+with input neuron 0 and output neurons 3 and 11 (in that order) and ReLU activation for the hidden neurons:
 
 ```python
 import connex as cnx
+import networkx as nx
 import jax.nn as jnn
 
-# Specify number of neurons
-num_neurons = 12
 
-# Build the adjacency dict
+# Create the graph
 adjacency_dict = {
     0: [1, 2, 3],
     1: [4],
@@ -45,6 +44,7 @@ adjacency_dict = {
     9: [11],
     10: [11]
 }
+graph = nx.DiGraph(adjacency_dict)
 
 # Specify the input and output neurons
 input_neurons = [0]
@@ -52,8 +52,7 @@ output_neurons = [3, 11]
 
 # Create the network
 network = cnx.NeuralNetwork(
-    num_neurons,
-    adjacency_dict, 
+    graph,
     input_neurons, 
     output_neurons,
     jnn.relu
@@ -114,3 +113,7 @@ That's all there is to it.  The new connections have been initialized with untra
 For more information about manipulating connectivity structure and the `NeuralNetwork` base class, please see the API section of the documentation. For examples of subclassing `NeuralNetwork`, please see `connex.nn`.
 
 Feedback is greatly appeciated!
+
+## Citation
+
+--8<-- "docs/citation.md"
