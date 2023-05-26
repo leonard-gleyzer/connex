@@ -10,3 +10,4 @@ pygments==2.14.0
 
 jax[cpu]
 jaxlib
+networkx
