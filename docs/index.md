@@ -24,11 +24,10 @@ with input neuron 0 and output neurons 3 and 11 (in that order) and ReLU activat
 
 ```python
 import connex as cnx
-import networkx as nx
 import jax.nn as jnn
 
 
-# Create the graph
+# Create the graph data
 adjacency_dict = {
     0: [1, 2, 3],
     1: [4],
