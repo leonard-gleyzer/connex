@@ -13,19 +13,21 @@
         <meta name="author" content="Leonard Gleyzer">
       
       
-      <link rel="icon" href="/connex/_static/favicon.png">
+        <link rel="canonical" href="https://leonard-gleyzer.github.io/connex/api/nn/dense_mlp/">
+      
+      <link rel="icon" href="../../../_static/favicon.png">
       <meta name="generator" content="mkdocs-1.3.0, mkdocs-material-7.3.6">
     
     
       
-        <title>Connex</title>
+        <title>DenseMLP - Connex</title>
       
     
     
-      <link rel="stylesheet" href="/connex/assets/stylesheets/main.a57b2b03.min.css">
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.a57b2b03.min.css">
       
         
-        <link rel="stylesheet" href="/connex/assets/stylesheets/palette.3f5d1f46.min.css">
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.3f5d1f46.min.css">
         
       
     
@@ -40,15 +42,15 @@
     
     
     
-      <link rel="stylesheet" href="/connex/assets/_mkdocstrings.css">
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
     
-      <link rel="stylesheet" href="/connex/_static/custom_css.css">
+      <link rel="stylesheet" href="../../../_static/custom_css.css">
     
-      <link rel="stylesheet" href="/connex/css/ansi-colours.css">
+      <link rel="stylesheet" href="../../../css/ansi-colours.css">
     
-      <link rel="stylesheet" href="/connex/css/jupyter-cells.css">
+      <link rel="stylesheet" href="../../../css/jupyter-cells.css">
     
-      <link rel="stylesheet" href="/connex/css/pandas-dataframe.css">
+      <link rel="stylesheet" href="../../../css/pandas-dataframe.css">
     
     
       
@@ -69,7 +71,7 @@
     <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="blue">
   
     
-    <script>function __prefix(e){return new URL("/connex/",location).pathname+"."+e}function __get(e,t=localStorage){return JSON.parse(t.getItem(__prefix(e)))}</script>
+    <script>function __prefix(e){return new URL("../../..",location).pathname+"."+e}function __get(e,t=localStorage){return JSON.parse(t.getItem(__prefix(e)))}</script>
     
       <script>var palette=__get("__palette");if(null!==palette&&"object"==typeof palette.color)for(var key in palette.color)document.body.setAttribute("data-md-color-"+key,palette.color[key])</script>
     
@@ -77,6 +79,11 @@
     <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
     <label class="md-overlay" for="__drawer"></label>
     <div data-md-component="skip">
+      
+        
+        <a href="#densemlp" class="md-skip">
+          Skip to content
+        </a>
       
     </div>
     <div data-md-component="announce">
@@ -87,7 +94,7 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="/connex/." title="Connex" class="md-header__button md-logo" aria-label="Connex" data-md-component="logo">
+    <a href="../../.." title="Connex" class="md-header__button md-logo" aria-label="Connex" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12 2 4 4h-3v7.85l6.53 3.76L21 15.03l1.5 5.47-5.5 1.46 1.53-2.61L12 15.58l-6.53 3.77L7 21.96 1.5 20.5 3 15.03l1.47 2.58L11 13.85V6H8l4-4z"/></svg>
@@ -106,7 +113,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              
+              DenseMLP
             
           </span>
         </div>
@@ -221,7 +228,7 @@
 
 <nav class="md-nav md-nav--primary md-nav--integrated" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="/connex/." title="Connex" class="md-nav__button md-logo" aria-label="Connex" data-md-component="logo">
+    <a href="../../.." title="Connex" class="md-nav__button md-logo" aria-label="Connex" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12 2 4 4h-3v7.85l6.53 3.76L21 15.03l1.5 5.47-5.5 1.46 1.53-2.61L12 15.58l-6.53 3.77L7 21.96 1.5 20.5 3 15.03l1.47 2.58L11 13.85V6H8l4-4z"/></svg>
@@ -263,7 +270,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/connex/." class="md-nav__link">
+      <a href="../../.." class="md-nav__link">
         Getting Started
       </a>
     </li>
@@ -276,14 +283,16 @@
 
   
   
+    
+  
   
     
       
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
       
-        <input class="md-nav__toggle md-toggle" data-md-toggle="__nav_2" type="checkbox" id="__nav_2" >
+        <input class="md-nav__toggle md-toggle" data-md-toggle="__nav_2" type="checkbox" id="__nav_2" checked>
       
       
       
@@ -306,7 +315,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/connex/api/network/" class="md-nav__link">
+      <a href="../../network/" class="md-nav__link">
         Neural Network
       </a>
     </li>
@@ -320,7 +329,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/connex/api/plasticity/" class="md-nav__link">
+      <a href="../../plasticity/" class="md-nav__link">
         Artificial Neuroplasticity
       </a>
     </li>
@@ -332,12 +341,14 @@
               
   
   
+    
+  
   
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
       
-        <input class="md-nav__toggle md-toggle" data-md-toggle="__nav_2_3" type="checkbox" id="__nav_2_3" >
+        <input class="md-nav__toggle md-toggle" data-md-toggle="__nav_2_3" type="checkbox" id="__nav_2_3" checked>
       
       
       
@@ -360,7 +371,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/connex/api/nn/mlp/" class="md-nav__link">
+      <a href="../mlp/" class="md-nav__link">
         MLP
       </a>
     </li>
@@ -372,11 +383,53 @@
               
   
   
+    
   
-    <li class="md-nav__item">
-      <a href="/connex/api/nn/dense_mlp/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" data-md-toggle="toc" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          DenseMLP
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         DenseMLP
       </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#connex.nn.DenseMLP" class="md-nav__link">
+    DenseMLP
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -406,7 +459,101 @@
           <div class="md-content" data-md-component="content">
             <article class="md-content__inner md-typeset">
               
-  <h1>404 - Not found</h1>
+                
+                
+                <h1 id="densemlp">DenseMLP<a class="headerlink" href="#densemlp" title="Permanent link">¤</a></h1>
+
+
+  <div class="doc doc-object doc-class">
+
+
+
+<h4 id="connex.nn.DenseMLP" class="doc doc-heading">
+        <code>
+connex.nn.DenseMLP            (<a class="autorefs autorefs-internal" title="connex.NeuralNetwork" href="../../network/#connex.NeuralNetwork">NeuralNetwork</a>)
+        </code>
+
+
+
+<a href="#connex.nn.DenseMLP" class="headerlink" title="Permanent link">¤</a></h4>
+
+    <div class="doc doc-contents first">
+
+      <p>A "Dense Multi-Layer Perceptron". Like a standard MLP, but
+every neuron is connected to every other neuron in all later layers, rather
+than only the next layer. That is, each layer uses the outputs from <em>all</em> previous
+layers, not just the most recent one, in a similar manner to DenseNet.</p>
+<details class="cite">
+<summary>Cite</summary>
+<p><a href="https://arxiv.org/abs/1608.06993">Densely Connected Convolutional Networks</a>
+<div class="highlight"><pre><span></span><code><span class="nc">@article</span><span class="p">{</span><span class="nl">ba2016layer</span><span class="p">,</span>
+<span class="w">    </span><span class="na">author</span><span class="p">=</span><span class="s">{Gao Huang, Zhuang Liu, Laurens van der Maaten, Kilian Q. Weinberger}</span><span class="p">,</span><span class="w">  </span><span class="err">#</span><span class="w"> </span><span class="err">noqa:</span><span class="w"> </span><span class="err">E501</span>
+<span class="w">    </span><span class="err">title={Densely</span><span class="w"> </span><span class="err">Connected</span><span class="w"> </span><span class="err">Convolutional</span><span class="w"> </span><span class="err">Networks</span><span class="p">}</span><span class="c">,</span>
+<span class="w">    </span><span class="c">year={2016},</span>
+<span class="w">    </span><span class="c">journal={arXiv:1608.06993},</span>
+<span class="c">}</span>
+</code></pre></div></p>
+</details>
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+  <div class="doc doc-object doc-method">
+
+
+
+<h5 id="connex.nn.DenseMLP.__init__" class="doc doc-heading">
+<code class="highlight language-python"><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">output_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">width</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">depth</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hidden_activation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">PjitFunction</span> <span class="n">of</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">silu</span> <span class="n">at</span> <span class="mh">0x125f0a0e0</span><span class="o">&gt;&gt;</span><span class="p">,</span> <span class="n">output_transformation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">_identity</span><span class="o">&gt;</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PRNGKey</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+
+
+<a href="#connex.nn.DenseMLP.__init__" class="headerlink" title="Permanent link">¤</a></h5>
+
+    <div class="doc doc-contents ">
+
+      <p><strong>Arguments</strong>:</p>
+<ul>
+<li><code>input_size</code>: The number of neurons in the input layer.</li>
+<li><code>output_size</code>: The number of neurons in the output layer.</li>
+<li><code>width</code>: The number of neurons in each hidden layer.</li>
+<li><code>depth</code>: The number of hidden layers.</li>
+<li><code>hidden_activation</code>: The activation function applied element-wise to
+    the hidden (i.e. non-input, non-output) neurons. It can itself be a
+    trainable <code>equinox Module</code>.</li>
+<li><code>output_transformation</code>: The transformation applied group-wise to the
+    output neurons, e.g. <code>jax.nn.softmax</code>. It can itself be a trainable
+    <code>equinox.Module</code>.</li>
+<li><code>key</code>: The <code>PRNGKey</code> used to initialize parameters. Optional, keyword-only
+    argument. Defaults to <code>jax.random.PRNGKey(0)</code>.</li>
+</ul>
+
+    </div>
+
+  </div>
+
+
+
+
+
+  </div>
+
+    </div>
+
+  </div>
+                
+              
+              
+                
+
 
               
             </article>
@@ -417,6 +564,26 @@
       
         
 <footer class="md-footer">
+  
+    <nav class="md-footer__inner md-grid" aria-label="Footer">
+      
+        
+        <a href="../mlp/" class="md-footer__link md-footer__link--prev" aria-label="Previous: MLP" rel="prev">
+          <div class="md-footer__button md-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"/></svg>
+          </div>
+          <div class="md-footer__title">
+            <div class="md-ellipsis">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              MLP
+            </div>
+          </div>
+        </a>
+      
+      
+    </nav>
   
   <div class="md-footer-meta md-typeset">
     <div class="md-footer-meta__inner md-grid">
@@ -439,12 +606,12 @@
     <div class="md-dialog" data-md-component="dialog">
       <div class="md-dialog__inner md-typeset"></div>
     </div>
-    <script id="__config" type="application/json">{"base": "/connex/", "features": ["navigation.sections", "toc.integrate", "header.autohide"], "search": "/connex/assets/javascripts/workers/search.fcfe8b6d.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version.title": "Select version"}, "version": null}</script>
+    <script id="__config" type="application/json">{"base": "../../..", "features": ["navigation.sections", "toc.integrate", "header.autohide"], "search": "../../../assets/javascripts/workers/search.fcfe8b6d.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version.title": "Select version"}, "version": null}</script>
     
     
-      <script src="/connex/assets/javascripts/bundle.b1047164.min.js"></script>
+      <script src="../../../assets/javascripts/bundle.b1047164.min.js"></script>
       
-        <script src="/connex/_static/mathjax.js"></script>
+        <script src="../../../_static/mathjax.js"></script>
       
         <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
       

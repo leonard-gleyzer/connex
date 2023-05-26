@@ -318,6 +318,13 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#citation" class="md-nav__link">
+    Citation
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -430,8 +437,8 @@
   
   
     <li class="md-nav__item">
-      <a href="api/nn/mcmlp/" class="md-nav__link">
-        MCMLP
+      <a href="api/nn/dense_mlp/" class="md-nav__link">
+        DenseMLP
       </a>
     </li>
   
@@ -465,26 +472,26 @@
                 
                 
                 <h1 id="getting-started">Getting Started<a class="headerlink" href="#getting-started" title="Permanent link">¤</a></h1>
-<p>Connex is a small <a href="https://github.com/google/jax">JAX</a> library built on <a href="https://github.com/patrick-kidger/equinox">Equinox</a> whose aim is to incorporate artificial analogues of biological neural network attributes into deep learning research and architecture design. Currently, this includes:</p>
+<p>Connex is a <a href="https://github.com/google/jax">JAX</a> library built on <a href="https://github.com/patrick-kidger/equinox">Equinox</a> that allows for fine-grained, dynamic control of neural network topology. With Connex, you can</p>
 <ul>
-<li><strong>Complex Connectivity</strong>: Turn any directed acyclic graph (DAG) into a trainable neural network.</li>
-<li><strong>Plasticity</strong>: Add and remove both connections and neurons at the individual level.</li>
-<li><strong>Firing Modulation</strong>: Set and modify dropout probabilities for all neurons individually.</li>
+<li>Turn any directed acyclic graph (DAG) into a trainable neural network.</li>
+<li>Add and remove both connections and neurons at the individual level.</li>
+<li>Set and modify dropout probabilities for all neurons individually.</li>
+<li>Easily toggle techniques such as normalization, adaptive activations, and self-attention.</li>
+<li>Export a trained network to a NetworkX weighted digraph for network analysis.</li>
 </ul>
 <h2 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">¤</a></h2>
-<div class="highlight"><pre><span></span><code>pip install connex
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>connex
 </code></pre></div>
 <h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">¤</a></h2>
-<p>As a small example, let's create a trainable neural network from the following DAG</p>
-<p><img alt="dag" src="https://www.mdpi.com/algorithms/algorithms-13-00256/article_deploy/html/images/algorithms-13-00256-g001.png" /></p>
-<p>with input neuron 0 and output neurons 3 and 11 (in that order), with a ReLU activation function for the hidden neurons:</p>
+<p>As a tiny pedagogical example, let's create a trainable neural network from the following DAG</p>
+<p><img alt="dag" src="imgs/dag.png" /></p>
+<p>with input neuron 0 and output neurons 3 and 11 (in that order) and ReLU activation for the hidden neurons:</p>
 <div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">connex</span> <span class="k">as</span> <span class="nn">cnx</span>
 <span class="kn">import</span> <span class="nn">jax.nn</span> <span class="k">as</span> <span class="nn">jnn</span>
 
-<span class="c1"># Specify number of neurons</span>
-<span class="n">num_neurons</span> <span class="o">=</span> <span class="mi">12</span>
 
-<span class="c1"># Build the adjacency dict</span>
+<span class="c1"># Create the graph data</span>
 <span class="n">adjacency_dict</span> <span class="o">=</span> <span class="p">{</span>
     <span class="mi">0</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
     <span class="mi">1</span><span class="p">:</span> <span class="p">[</span><span class="mi">4</span><span class="p">],</span>
@@ -504,8 +511,7 @@
 
 <span class="c1"># Create the network</span>
 <span class="n">network</span> <span class="o">=</span> <span class="n">cnx</span><span class="o">.</span><span class="n">NeuralNetwork</span><span class="p">(</span>
-    <span class="n">num_neurons</span><span class="p">,</span>
-    <span class="n">adjacency_dict</span><span class="p">,</span> 
+    <span class="n">adjacency_dict</span><span class="p">,</span>
     <span class="n">input_neurons</span><span class="p">,</span> 
     <span class="n">output_neurons</span><span class="p">,</span>
     <span class="n">jnn</span><span class="o">.</span><span class="n">relu</span>
@@ -515,6 +521,7 @@
 <div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">equinox</span> <span class="k">as</span> <span class="nn">eqx</span>
 <span class="kn">import</span> <span class="nn">jax</span>
 <span class="kn">import</span> <span class="nn">jax.numpy</span> <span class="k">as</span> <span class="nn">jnp</span>
+<span class="kn">import</span> <span class="nn">jax.random</span> <span class="k">as</span> <span class="nn">jr</span>
 <span class="kn">import</span> <span class="nn">optax</span>
 
 <span class="c1"># Initialize the optimizer</span>
@@ -523,14 +530,14 @@
 
 <span class="c1"># Define the loss function</span>
 <span class="nd">@eqx</span><span class="o">.</span><span class="n">filter_value_and_grad</span>
-<span class="k">def</span> <span class="nf">loss_fn</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
-    <span class="n">preds</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span><span class="n">model</span><span class="p">)(</span><span class="n">x</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">loss_fn</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">keys</span><span class="p">):</span>
+    <span class="n">preds</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span><span class="n">model</span><span class="p">)(</span><span class="n">x</span><span class="p">,</span> <span class="n">keys</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">mean</span><span class="p">((</span><span class="n">preds</span> <span class="o">-</span> <span class="n">y</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
 
 <span class="c1"># Define a single training step</span>
 <span class="nd">@eqx</span><span class="o">.</span><span class="n">filter_jit</span>
-<span class="k">def</span> <span class="nf">step</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
-    <span class="n">loss</span><span class="p">,</span> <span class="n">grads</span> <span class="o">=</span> <span class="n">loss_fn</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">step</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">keys</span><span class="p">):</span>
+    <span class="n">loss</span><span class="p">,</span> <span class="n">grads</span> <span class="o">=</span> <span class="n">loss_fn</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">keys</span><span class="p">)</span>
     <span class="n">updates</span><span class="p">,</span> <span class="n">opt_state</span> <span class="o">=</span> <span class="n">optim</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">grads</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">model</span><span class="p">)</span>
     <span class="n">model</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">apply_updates</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">updates</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">model</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">loss</span>
@@ -540,23 +547,35 @@
 <span class="n">y</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">hstack</span><span class="p">((</span><span class="n">jnp</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">x</span><span class="p">)))</span>
 
 <span class="c1"># Training loop</span>
-<span class="n">n_epochs</span> <span class="o">=</span> <span class="mi">1000</span>
-<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_epochs</span><span class="p">):</span>
-    <span class="n">network</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">loss</span> <span class="o">=</span> <span class="n">step</span><span class="p">(</span><span class="n">network</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+<span class="n">n_epochs</span> <span class="o">=</span> <span class="mi">500</span>
+<span class="n">key</span> <span class="o">=</span> <span class="n">jr</span><span class="o">.</span><span class="n">PRNGKey</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_epochs</span><span class="p">):</span>
+    <span class="o">*</span><span class="n">keys</span><span class="p">,</span> <span class="n">key</span> <span class="o">=</span> <span class="n">jr</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">keys</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">keys</span><span class="p">)</span>
+    <span class="n">network</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">loss</span> <span class="o">=</span> <span class="n">step</span><span class="p">(</span><span class="n">network</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">keys</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Epoch: </span><span class="si">{</span><span class="n">epoch</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">   Loss: </span><span class="si">{</span><span class="n">loss</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </code></pre></div>
 <p>Now suppose we wish to add connections 1 &rarr; 6 and 2 &rarr; 11, remove neuron 9, and set the dropout probability of all hidden neurons to 0.1:</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># Add connections</span>
 <span class="n">network</span> <span class="o">=</span> <span class="n">cnx</span><span class="o">.</span><span class="n">add_connections</span><span class="p">(</span><span class="n">network</span><span class="p">,</span> <span class="p">[(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">6</span><span class="p">),</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">11</span><span class="p">)])</span>
 
 <span class="c1"># Remove neuron</span>
-<span class="n">network</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">cnx</span><span class="o">.</span><span class="n">remove_neurons</span><span class="p">(</span><span class="n">network</span><span class="p">,</span> <span class="p">[</span><span class="mi">9</span><span class="p">])</span>
+<span class="n">network</span> <span class="o">=</span> <span class="n">cnx</span><span class="o">.</span><span class="n">remove_neurons</span><span class="p">(</span><span class="n">network</span><span class="p">,</span> <span class="p">[</span><span class="mi">9</span><span class="p">])</span>
 
 <span class="c1"># Set dropout probability</span>
 <span class="n">network</span><span class="o">.</span><span class="n">set_dropout_p</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>
 </code></pre></div>
 <p>That's all there is to it.  The new connections have been initialized with untrained parameters, and the neurons in the original network that have not been removed (along with their respective incoming and outgoing connections) have retained their trained parameters. Furthermore, since a <code>connex.NeuralNetwork</code> is an <code>equinox.Module</code>, it can seamlessly be used as a submodule inside other Equinox Modules.</p>
 <p>For more information about manipulating connectivity structure and the <code>NeuralNetwork</code> base class, please see the API section of the documentation. For examples of subclassing <code>NeuralNetwork</code>, please see <code>connex.nn</code>.</p>
-<p>Feedback is greatly appeciated!</p>
+<h2 id="citation">Citation<a class="headerlink" href="#citation" title="Permanent link">¤</a></h2>
+<div class="highlight"><pre><span></span><code><span class="nc">@software</span><span class="p">{</span><span class="nl">gleyzer2023connex</span><span class="p">,</span>
+<span class="w">  </span><span class="na">author</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{Leonard Gleyzer}</span><span class="p">,</span>
+<span class="w">  </span><span class="na">title</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{{C}onnex: Fine-grained Control over Neural Network Topology in {JAX}}</span><span class="p">,</span>
+<span class="w">  </span><span class="na">url</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{http://github.com/leonard-gleyzer/connex}</span><span class="p">,</span>
+<span class="w">  </span><span class="na">version</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{0.2.0}</span><span class="p">,</span>
+<span class="w">  </span><span class="na">year</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{2023}</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div>
                 
               
               

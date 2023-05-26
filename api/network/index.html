@@ -425,8 +425,8 @@
   
   
     <li class="md-nav__item">
-      <a href="../nn/mcmlp/" class="md-nav__link">
-        MCMLP
+      <a href="../nn/dense_mlp/" class="md-nav__link">
+        DenseMLP
       </a>
     </li>
   
@@ -460,7 +460,7 @@
                 
                 
                 <h1 id="neural-network">Neural Network<a class="headerlink" href="#neural-network" title="Permanent link">¤</a></h1>
-<p>The main class/object of the <code>connex</code> library.</p>
+<p>The main object of the <code>connex</code> library.</p>
 
 
   <div class="doc doc-object doc-class">
@@ -477,10 +477,7 @@ connex.NeuralNetwork        </code>
 
     <div class="doc doc-contents first">
 
-      <p>A neural network whose structure is primarily specified by an adjecency dict
-representing a directed acyclic graph (DAG) and sequences of ints specifying
-which neurons are input and output neurons. Create your model by inheriting from
-this.</p>
+      <p>A neural network whose structure is specified by a DAG.</p>
 
 
 
@@ -500,7 +497,7 @@ this.</p>
 
 
 <h5 id="connex.NeuralNetwork.__init__" class="doc doc-heading">
-<code class="highlight language-python"><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">num_neurons</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">adjacency_dict</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span> <span class="n">input_neurons</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">output_neurons</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">hidden_activation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">silu</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">output_activation_elem</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">_identity</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">output_activation_group</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">_identity</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">dropout_p</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PRNGKey</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">parameter_matrix</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Array</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+<code class="highlight language-python"><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">graph_data</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">input_neurons</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span> <span class="n">output_neurons</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span> <span class="n">hidden_activation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">gelu</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">output_transformation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">_identity</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">dropout_p</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">use_topo_norm</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">use_topo_self_attention</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">use_neuron_self_attention</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">use_adaptive_activations</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">topo_sort</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PRNGKey</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span></code>
 
 
 <a href="#connex.NeuralNetwork.__init__" class="headerlink" title="Permanent link">¤</a></h5>
@@ -509,35 +506,103 @@ this.</p>
 
       <p><strong>Arguments</strong>:</p>
 <ul>
-<li><code>num_neurons</code>: The number of neurons in the network.</li>
-<li><code>adjacency_dict</code>: A dictionary that maps a neuron id to the ids of its
-    outputs. Neurons must be ordered from <code>0</code> to <code>num_neurons - 1</code>. Neurons
-    with no outgoing connections do not need to be included.</li>
-<li><code>input_neurons</code>: A sequence of <code>int</code> indicating the ids of the 
-    input neurons. The order here matters, as the input data will be
-    passed into the input neurons in the order passed in here.</li>
-<li><code>output_neurons</code>: A sequence of <code>int</code> indicating the ids of the 
-    output neurons. The order here matters, as the output data will be
-    read from the output neurons in the order passed in here.</li>
-<li><code>hidden_activation</code>: The activation function applied element-wise to the 
-    hidden (i.e. non-input, non-output) neurons. It can itself be a 
-    trainable <code>equinox.Module</code>.</li>
-<li><code>output_activation_elem</code>: The activation function applied element-wise to 
-    the  output neurons. It can itself be a trainable <code>equinox.Module</code>.</li>
-<li><code>output_activation_group</code>: The activation function applied to the output 
-    neurons as a whole after applying <code>output_activation_elem</code> element-wise, 
-    e.g. <code>jax.nn.softmax</code>. It can itself be a trainable <code>equinox.Module</code>.</li>
+<li><code>graph_data</code>: A <code>networkx.DiGraph</code>, or data that can be turned into a
+    <code>networkx.DiGraph</code>  by calling <code>networkx.DiGraph(graph_data)</code>
+    (such as an adjacency dict) representing the DAG structure of the neural
+    network. All nodes of the graph must have the same type.</li>
+<li><code>input_neurons</code>: An <code>Sequence</code> of nodes from <code>graph</code> indicating the input
+    neurons. The order here matters, as the input data will be passed into
+    the input neurons in the order specified here.</li>
+<li><code>output_neurons</code>: An <code>Sequence</code> of nodes from <code>graph</code> indicating the output
+    neurons. The order here matters, as the output data will be read from the
+    output neurons in the order specified here.</li>
+<li><code>hidden_activation</code>: The activation function applied element-wise to the
+    hidden (i.e. non-input, non-output) neurons. It can itself be a trainable
+    <code>equinox.Module</code>.</li>
+<li><code>output_transformation</code>: The transformation applied group-wise to the output
+    neurons, e.g. <code>jax.nn.softmax</code>. It can itself be a trainable
+    <code>equinox.Module</code>.</li>
 <li><code>dropout_p</code>: Dropout probability. If a single <code>float</code>, the same dropout
-    probability will be applied to all hidden neurons. If a <code>Sequence[float]</code>,
-    the sequence must have length <code>num_neurons</code>, where <code>dropout_p[i]</code> is the
-    dropout probability for neuron <code>i</code>. Note that this allows dropout to be 
-    applied to input and output neurons as well.</li>
-<li><code>key</code>: The <code>jax.random.PRNGKey</code> used for parameter initialization and dropout. 
+    probability will be applied to all hidden neurons.
+    If a <code>Mapping[Any, float]</code>, <code>dropout_p[i]</code> refers to the dropout
+    probability of neuron <code>i</code>. All neurons default to zero unless otherwise
+    specified. Note that this allows dropout to be applied to input and output
+    neurons as well.</li>
+<li>
+<p><code>use_topo_norm</code>: A <code>bool</code> indicating whether to apply a topological batch-
+    version of Layer Norm,</p>
+<details class="cite">
+<summary>Cite</summary>
+<p><a href="https://arxiv.org/abs/1607.06450">Layer Normalization</a>
+<div class="highlight"><pre><span></span><code><span class="nc">@article</span><span class="p">{</span><span class="nl">ba2016layer</span><span class="p">,</span>
+<span class="w">    </span><span class="na">author</span><span class="p">=</span><span class="s">{Jimmy Lei Ba, Jamie Ryan Kriso, Geoffrey E. Hinton}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">title</span><span class="p">=</span><span class="s">{Layer Normalization}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">year</span><span class="p">=</span><span class="s">{2016}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">journal</span><span class="p">=</span><span class="s">{arXiv:1607.06450}</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div></p>
+</details>
+<p>where the collective inputs of each topological batch are standardized
+(made to have mean 0 and variance 1), with learnable elementwise-affine
+parameters <code>gamma</code> and <code>beta</code>.
+- <code>use_topo_self_attention</code>: A <code>bool</code> indicating whether to apply
+(single-headed) self-attention to each topological batch's collective
+inputs.</p>
+<details class="cite">
+<summary>Cite</summary>
+<p><a href="https://arxiv.org/abs/1706.03762">Attention is All You Need</a>
+<div class="highlight"><pre><span></span><code><span class="nc">@inproceedings</span><span class="p">{</span><span class="nl">vaswani2017attention</span><span class="p">,</span>
+<span class="w">    </span><span class="na">author</span><span class="p">=</span><span class="s">{Vaswani, Ashish and Shazeer, Noam and Parmar, Niki and</span>
+<span class="s">            Uszkoreit, Jakob and Jones, Llion and Gomez, Aidan N and</span>
+<span class="s">            Kaiser, {\L}ukasz and Polosukhin, Illia}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">booktitle</span><span class="p">=</span><span class="s">{Advances in Neural Information Processing Systems}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">publisher</span><span class="p">=</span><span class="s">{Curran Associates, Inc.}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">title</span><span class="p">=</span><span class="s">{Attention is All You Need}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">volume</span><span class="p">=</span><span class="s">{30}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">year</span><span class="p">=</span><span class="s">{2017}</span>
+<span class="p">}</span>
+</code></pre></div></p>
+</details>
+</li>
+<li>
+<p><code>use_neuron_self_attention</code>: A <code>bool</code> indicating whether to apply neuron-wise
+    self-attention, where each neuron applies (single-headed) self-attention to
+    its inputs. If both <code>_use_neuron_self_attention</code> and <code>use_neuron_norm</code> are
+    <code>True</code>, normalization is applied before self-attention.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Neuron-level self-attention will use significantly more memory than
+than topo-level self-attention.</p>
+</div>
+</li>
+<li>
+<p><code>use_adaptive_activations</code>: A bool indicating whether to use neuron-wise
+    adaptive activations, where all hidden activations transform as
+    <code>σ(x) -&gt; a * σ(b * x)</code>, where <code>a</code>, <code>b</code> are trainable scalar parameters
+    unique to each neuron.</p>
+<details class="cite">
+<summary>Cite</summary>
+<p><a href="https://arxiv.org/abs/1909.12228">Locally adaptive activation functions with slope recovery term for
+ deep and physics-informed neural networks</a>  # noqa: E501
+<div class="highlight"><pre><span></span><code><span class="nc">@article</span><span class="p">{</span><span class="nl">Jagtap_2020</span><span class="p">,</span>
+<span class="w">    </span><span class="na">author</span><span class="p">=</span><span class="s">{Ameya D. Jagtap, Kenji Kawaguchi, George Em Karniadakis}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">title</span><span class="p">=</span><span class="s">{Locally adaptive activation functions with slope recovery</span>
+<span class="s">           term for deep and physics-informed neural networks}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">year</span><span class="p">=</span><span class="s">{2020}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">publisher</span><span class="p">=</span><span class="s">{The Royal Society}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">journal</span><span class="p">=</span><span class="s">{Proceedings of the Royal Society A: Mathematical, Physical</span>
+<span class="s">    and Engineering Sciences}</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div></p>
+</details>
+</li>
+<li>
+<p><code>topo_sort</code>: An optional sequence of neurons indicating a topological sort of
+    the graph. If <code>None</code>, a topological sort will be performed on the graph, which
+    may be time-consuming for some networks.</p>
+</li>
+<li><code>key</code>: The <code>jax.random.PRNGKey</code> used for parameter initialization and dropout.
     Optional, keyword-only argument. Defaults to <code>jax.random.PRNGKey(0)</code>.</li>
-<li><code>parameter_matrix</code>: A <code>jnp.array</code> of shape <code>(num_neurons, num_neurons + 1)</code> 
-    where entry <code>[i, j]</code> is neuron <code>i</code>'s weight for neuron <code>j</code>, and entry 
-    <code>[i, num_neurons]</code> is neuron <code>i</code>'s bias. Optional, keyword-only argument -- 
-    used primarily for plasticity functionality.</li>
 </ul>
 
     </div>
@@ -551,21 +616,34 @@ this.</p>
 
 
 <h5 id="connex.NeuralNetwork.__call__" class="doc doc-heading">
-<code class="highlight language-python"><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span> <span class="n">Array</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Array</span></code>
+<code class="highlight language-python"><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span> <span class="n">Array</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PRNGKey</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Array</span></code>
 
 
 <a href="#connex.NeuralNetwork.__call__" class="headerlink" title="Permanent link">¤</a></h5>
 
     <div class="doc doc-contents ">
 
-      <p>The forward pass of the network. Neurons are "fired" in topological batch
-order (see Section 2.2 of https://arxiv.org/pdf/2101.07965.pdf), with <code>jax.vmap</code> 
-vectorization used within each topological batch.</p>
+      <p>The forward pass of the network.
+Neurons are "fired" in topological batch order -- see Section 2.2 of</p>
+<details class="cite">
+<summary>Cite</summary>
+<p><a href="https://arxiv.org/abs/2101.07965">Directed Acyclic Graph Neural Networks</a>
+<div class="highlight"><pre><span></span><code><span class="nc">@inproceedings</span><span class="p">{</span><span class="nl">thost2021directed</span><span class="p">,</span>
+<span class="w">    </span><span class="na">author</span><span class="p">=</span><span class="s">{Veronika Thost and Jie Chen}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">booktitle</span><span class="p">=</span><span class="s">{International Conference on Learning Representations}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">publisher</span><span class="p">=</span><span class="s">{Curran Associates, Inc.}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">title</span><span class="p">=</span><span class="s">{Directed Acyclic Graph Neural Networks}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">year</span><span class="p">=</span><span class="s">{2021}</span>
+<span class="p">}</span>
+</code></pre></div></p>
+</details>
 <p><strong>Arguments</strong>:</p>
 <ul>
 <li><code>x</code>: The input array to the network for the forward pass. The individual
     values will be written to the input neurons in the order passed in during
     initialization.</li>
+<li><code>key</code>: A <code>jax.random.PRNGKey</code> used for dropout. Must be provided, even if all
+    dropout probabilities are 0.</li>
 </ul>
 <p><strong>Returns</strong>:</p>
 <p>The result array from the forward pass. The order of the array elements will be
@@ -581,31 +659,8 @@ the order of the output neurons passed in during initialization.</p>
 
 
 
-<h5 id="connex.NeuralNetwork.get_dropout_p" class="doc doc-heading">
-<code class="highlight language-python"><span class="n">get_dropout_p</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Array</span></code>
-
-
-<a href="#connex.NeuralNetwork.get_dropout_p" class="headerlink" title="Permanent link">¤</a></h5>
-
-    <div class="doc doc-contents ">
-
-      <p>Get the per-neuron dropout probabilities.</p>
-<p><strong>Returns</strong>:</p>
-<p>A <code>jnp.array</code> with shape <code>(num_neurons,)</code> where element <code>i</code> 
-is the dropout probability of neuron <code>i</code>.</p>
-
-    </div>
-
-  </div>
-
-
-
-  <div class="doc doc-object doc-method">
-
-
-
 <h5 id="connex.NeuralNetwork.set_dropout_p" class="doc doc-heading">
-<code class="highlight language-python"><span class="n">set_dropout_p</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dropout_p</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="kc">None</span></code>
+<code class="highlight language-python"><span class="n">set_dropout_p</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dropout_p</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="nb">float</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="kc">None</span></code>
 
 
 <a href="#connex.NeuralNetwork.set_dropout_p" class="headerlink" title="Permanent link">¤</a></h5>
@@ -613,14 +668,19 @@ is the dropout probability of neuron <code>i</code>.</p>
     <div class="doc doc-contents ">
 
       <p>Set the per-neuron dropout probabilities.</p>
-<p><strong>Arguments</strong>:</p>
+<p><strong>Arguments:</strong></p>
 <ul>
-<li><code>dropout_p</code>: Dropout probability. If a single <code>float</code>, the same dropout
-    probability will be applied to all hidden neurons. If a <code>Sequence[float]</code>,
-    the sequence must have length <code>num_neurons</code>, where <code>dropout_p[i]</code> is the
-    dropout probability for neuron <code>i</code>. Note that this allows dropout to be 
-    applied to input and output neurons as well.</li>
+<li><code>dropout_p</code>: Either a float or mapping from neuron (<code>Any</code>) to float. If a
+    single float, all hidden neurons will have that dropout probability, and
+    all input and output neurons will have dropout probability 0 by default.
+    If a <code>Mapping</code>, it is assumed that <code>dropout_p</code> maps a neuron to its dropout
+    probability, and all unspecified neurons will retain their current dropout
+    probability.</li>
 </ul>
+<p><strong>Returns:</strong></p>
+<p>A copy of the current network with dropout probabilities as specified.
+The original network (including unspecified dropout probabilities) is left
+unchanged.</p>
 
     </div>
 
@@ -632,30 +692,16 @@ is the dropout probability of neuron <code>i</code>.</p>
 
 
 
-<h5 id="connex.NeuralNetwork.to_networkx_graph" class="doc doc-heading">
-<code class="highlight language-python"><span class="n">to_networkx_graph</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DiGraph</span></code>
+<h5 id="connex.NeuralNetwork.to_networkx_weighted_digraph" class="doc doc-heading">
+<code class="highlight language-python"><span class="n">to_networkx_weighted_digraph</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DiGraph</span></code>
 
 
-<a href="#connex.NeuralNetwork.to_networkx_graph" class="headerlink" title="Permanent link">¤</a></h5>
+<a href="#connex.NeuralNetwork.to_networkx_weighted_digraph" class="headerlink" title="Permanent link">¤</a></h5>
 
     <div class="doc doc-contents ">
 
-      <p>NetworkX (https://networkx.org) is a popular Python library for network 
-analysis. This function returns an instance of NetworkX's directed graph object 
-<code>networkx.DiGraph</code> that represents the structure of the neural network. This may be 
-useful for analyzing and/or debugging the connectivity structure of the network.</p>
-<p><strong>Returns</strong>:</p>
-<p>A <code>networkx.DiGraph</code> object that represents the structure of the network, where
-the neurons are nodes with the same numbering. </p>
-<p>The nodes have the following field(s):</p>
-<ul>
-<li><code>group</code>: One of {<code>'input'</code>, <code>'hidden'</code>, <code>'output'</code>} (a string).</li>
-<li><code>bias</code>: The corresponding neuron's bias (a float).</li>
-</ul>
-<p>The edges have the following field(s):</p>
-<ul>
-<li><code>weight</code>: The corresponding network weight (a float).</li>
-</ul>
+      <p>Returns a <code>networkx.DiGraph</code> represention of the network with neuron weights
+saved as edge attributes.</p>
 
     </div>
 

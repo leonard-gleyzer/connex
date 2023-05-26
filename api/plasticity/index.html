@@ -378,8 +378,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#connex.add_neurons" class="md-nav__link">
-    add_neurons()
+  <a href="#connex.add_input_neurons" class="md-nav__link">
+    add_input_neurons()
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#connex.add_hidden_neurons" class="md-nav__link">
+    add_hidden_neurons()
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#connex.add_output_neurons" class="md-nav__link">
+    add_output_neurons()
   </a>
   
 </li>
@@ -387,13 +401,6 @@
         <li class="md-nav__item">
   <a href="#connex.remove_neurons" class="md-nav__link">
     remove_neurons()
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#connex.connect_networks" class="md-nav__link">
-    connect_networks()
   </a>
   
 </li>
@@ -453,8 +460,8 @@
   
   
     <li class="md-nav__item">
-      <a href="../nn/mcmlp/" class="md-nav__link">
-        MCMLP
+      <a href="../nn/dense_mlp/" class="md-nav__link">
+        DenseMLP
       </a>
     </li>
   
@@ -488,8 +495,8 @@
                 
                 
                 <h1 id="artificial-neuroplasticity">Artificial Neuroplasticity<a class="headerlink" href="#artificial-neuroplasticity" title="Permanent link">¤</a></h1>
-<p>The brain has a remarkable ability to rewire itself under the right conditions, known as <a href="https://en.wikipedia.org/wiki/Neuroplasticity">plasticity</a>. This includes, among other processes, <a href="https://en.wikipedia.org/wiki/Synaptogenesis">synaptogenesis</a> (the formation of new synapses), <a href="https://en.wikipedia.org/wiki/Synaptic_pruning">synaptic pruning</a> (the removal of synapses), <a href="https://en.wikipedia.org/wiki/Neurogenesis">neurogenesis</a> (the formation of new neurons), and <a href="https://en.wikipedia.org/wiki/Programmed_cell_death#Role_in_the_development_of_the_nervous_system">programmed cell death</a> (the removal of neurons), all of which have been shown to play prominent roles during various parts of neural development. </p>
-<p>We provide the following code functionality to mirror these processes. All leave the input network(s) unmodified.</p>
+<p>The brain has a remarkable ability to rewire itself under the right conditions, known as plasticity. This includes, among other processes, the formation of new synapses (synaptogenesis), the removal of synapses (synaptic pruning), the formation of new neurons (neurogenesis), and the removal of neurons (programmed cell death).</p>
+<p>We provide the following code functionality to mirror these processes. All return a copy of the network and leave the input network unmodified.</p>
 
 
   <div class="doc doc-object doc-function">
@@ -497,7 +504,7 @@
 
 
 <h4 id="connex.add_connections" class="doc doc-heading">
-<code class="highlight language-python"><span class="n">connex</span><span class="o">.</span><span class="n">add_connections</span><span class="p">(</span><span class="n">network</span><span class="p">:</span> <span class="n">NeuralNetwork</span><span class="p">,</span> <span class="n">connections</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]],</span> <span class="n">input_neurons</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">output_neurons</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">dropout_p</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NeuralNetwork</span></code>
+<code class="highlight language-python"><span class="n">connex</span><span class="o">.</span><span class="n">add_connections</span><span class="p">(</span><span class="n">network</span><span class="p">:</span> <span class="n">NeuralNetwork</span><span class="p">,</span> <span class="n">connections</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Sequence</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span> <span class="n">Mapping</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">]]],</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PRNGKey</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NeuralNetwork</span></code>
 
 
 <a href="#connex.add_connections" class="headerlink" title="Permanent link">¤</a></h4>
@@ -505,36 +512,24 @@
     <div class="doc doc-contents first">
 
       <p>Add connections to the network.</p>
-<p><strong>Arguments</strong>:</p>
+<p><strong>Arguments:</strong></p>
 <ul>
-<li><code>network</code>: A <code>NeuralNetwork</code> object</li>
-<li><code>connections</code>: A sequence of pairs <code>(i, j)</code> to add to the network
-    as directed edges.</li>
-<li><code>input_neurons</code>: A sequence of <code>int</code> indicating the ids of the 
-    input neurons. The order here matters, as the input data will be
-    passed into the input neurons in the order passed in here. Optional
-    argument. If <code>None</code>, the input neurons of the original network will
-    be retained.</li>
-<li><code>output_neurons</code>: A sequence of <code>int</code> indicating the ids of the 
-    output neurons. The order here matters, as the output data will be
-    read from the output neurons in the order passed in here. Optional 
-    argument. If <code>None</code>, the output neurons of the original network will
-    be retained.</li>
-<li><code>dropout_p</code>: Dropout probability. If a single <code>float</code>, the same dropout
-    probability will be applied to all hidden neurons. If a <code>Sequence[float]</code>,
-    the sequence must have length <code>num_neurons</code>, where <code>dropout_p[i]</code> is the
-    dropout probability for neuron <code>i</code>. Note that this allows dropout to be 
-    applied to input and output neurons as well. Optional argument. If <code>None</code>, 
-    the dropout probabilities of the original network will be retained.</li>
+<li><code>network</code>: A <code>NeuralNetwork</code> object.</li>
+<li><code>connections</code>: The directed edges to add. Must be a sequence of 2-tuples, or
+    an adjacency dict mapping an existing neuron (by its NetworkX id) to its
+    new outgoing connections. Connections that already exist are ignored.</li>
+<li><code>key</code>: The <code>jax.random.PRNGKey</code> used for new weight initialization.
+    Optional, keyword-only argument. Defaults to <code>jax.random.PRNGKey(0)</code>.</li>
 </ul>
-<p><strong>Returns</strong>:</p>
-<p>A <code>NeuralNetwork</code> object with the input connections added and original
+<p><strong>Returns:</strong></p>
+<p>A <code>NeuralNetwork</code> object with the specified connections added and original
 parameters retained.</p>
 
     </div>
 
   </div>
 
+<hr />
 
 
   <div class="doc doc-object doc-function">
@@ -542,7 +537,7 @@ parameters retained.</p>
 
 
 <h4 id="connex.remove_connections" class="doc doc-heading">
-<code class="highlight language-python"><span class="n">connex</span><span class="o">.</span><span class="n">remove_connections</span><span class="p">(</span><span class="n">network</span><span class="p">:</span> <span class="n">NeuralNetwork</span><span class="p">,</span> <span class="n">connections</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]],</span> <span class="n">input_neurons</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">output_neurons</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">dropout_p</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NeuralNetwork</span></code>
+<code class="highlight language-python"><span class="n">connex</span><span class="o">.</span><span class="n">remove_connections</span><span class="p">(</span><span class="n">network</span><span class="p">:</span> <span class="n">NeuralNetwork</span><span class="p">,</span> <span class="n">connections</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Sequence</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span> <span class="n">Mapping</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">]]])</span> <span class="o">-&gt;</span> <span class="n">NeuralNetwork</span></code>
 
 
 <a href="#connex.remove_connections" class="headerlink" title="Permanent link">¤</a></h4>
@@ -550,78 +545,139 @@ parameters retained.</p>
     <div class="doc doc-contents first">
 
       <p>Remove connections from the network.</p>
-<p><strong>Arguments</strong>:</p>
+<p><strong>Arguments:</strong></p>
 <ul>
-<li><code>network</code>: A <code>NeuralNetwork</code> object</li>
-<li><code>connections</code>: A sequence of pairs <code>(i, j)</code> to remove from the network
-    as directed edges.</li>
-<li><code>input_neurons</code>: A sequence of <code>int</code> indicating the ids of the 
-    input neurons. The order here matters, as the input data will be
-    passed into the input neurons in the order passed in here. Optional
-    argument. If <code>None</code>, the input neurons of the original network will
-    be retained.</li>
-<li><code>output_neurons</code>: A sequence of <code>int</code> indicating the ids of the 
-    output neurons. The order here matters, as the output data will be
-    read from the output neurons in the order passed in here. Optional 
-    argument. If <code>None</code>, the output neurons of the original network will
-    be retained.</li>
-<li><code>dropout_p</code>: Dropout probability. If a single <code>float</code>, the same dropout
-    probability will be applied to all hidden neurons. If a <code>Sequence[float]</code>,
-    the sequence must have length <code>num_neurons</code>, where <code>dropout_p[i]</code> is the
-    dropout probability for neuron <code>i</code>. Note that this allows dropout to be 
-    applied to input and output neurons as well. Optional argument. If <code>None</code>, 
-    the dropout probabilities of the original network will be retained.</li>
+<li><code>network</code>: A <code>NeuralNetwork</code> object.</li>
+<li><code>connections</code>: The directed edges to remove. Must be a sequence of 2-tuples, or
+    an adjacency dict mapping an existing neuron (by its NetworkX id) to its
+    new outgoing connections. Connections that already exist are ignored.</li>
 </ul>
-<p><strong>Returns</strong>:</p>
-<p>A <code>NeuralNetwork</code> object with the desired connections removed and original
+<p><strong>Returns:</strong></p>
+<p>A <code>NeuralNetwork</code> object with the specified connections removed and original
 parameters retained.</p>
 
     </div>
 
   </div>
 
+<hr />
 
 
   <div class="doc doc-object doc-function">
 
 
 
-<h4 id="connex.add_neurons" class="doc doc-heading">
-<code class="highlight language-python"><span class="n">connex</span><span class="o">.</span><span class="n">add_neurons</span><span class="p">(</span><span class="n">network</span><span class="p">:</span> <span class="n">NeuralNetwork</span><span class="p">,</span> <span class="n">new_neuron_data</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Mapping</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">NeuralNetwork</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span></code>
+<h4 id="connex.add_input_neurons" class="doc doc-heading">
+<code class="highlight language-python"><span class="n">connex</span><span class="o">.</span><span class="n">add_input_neurons</span><span class="p">(</span><span class="n">network</span><span class="p">:</span> <span class="n">NeuralNetwork</span><span class="p">,</span> <span class="n">new_input_neurons</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PRNGKey</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NeuralNetwork</span></code>
 
 
-<a href="#connex.add_neurons" class="headerlink" title="Permanent link">¤</a></h4>
+<a href="#connex.add_input_neurons" class="headerlink" title="Permanent link">¤</a></h4>
 
     <div class="doc doc-contents first">
 
-      <p>Add neurons to the network. These can be input, hidden, or output neurons.</p>
-<p><strong>Arguments</strong>:</p>
+      <p>Add input neurons to the network. Note that this function only adds neurons
+themselves, not any connections associated with the new neurons, effectively adding
+them as isolated nodes in the graph. Use <a class="autorefs autorefs-internal" href="#connex.add_connections"><code>connex.add_connections</code></a> after this
+function has been called to add the desired connections.</p>
+<p><strong>Arguments:</strong></p>
 <ul>
-<li><code>network</code>: A <code>NeuralNetwork</code> object</li>
-<li><code>new_neuron_data</code>: A sequence of dictionaries, where each dictionary 
-    represents a new neuron to add to the network. Each dictionary must 
-    have 4 <code>str</code> fields:<ul>
-<li><code>'in_neurons'</code>: An <code>Optional[Sequence[int]]</code> indexing the neurons from the 
-    original network that feed into the new neuron.</li>
-<li><code>'out_neurons'</code>: An <code>Optional[Sequence[int]]</code> indexing the neurons from the 
-    original network which the new neuron feeds into.</li>
-<li><code>'group'</code>: One of {<code>'input'</code>, <code>'hidden'</code>, <code>'output'</code>}. A <code>str</code> representing
-    which group the new neuron belongs to.</li>
-<li><code>'dropout_p'</code>: An <code>Optional[float]</code>, the dropout probability for the new neuron. 
-    Defaults to 0.</li>
+<li><code>network</code>: The <code>NeuralNetwork</code> to add neurons to</li>
+<li><code>new_input_neurons</code>: A sequence of new input neurons (more specifically, their
+    identifiers/names) to add to the network. These must be unique, i.e. cannot
+    already exist in the network. These must also specifically be input neurons.
+    To add hidden or output neurons, use <a class="autorefs autorefs-internal" href="#connex.add_hidden_neurons"><code>connex.add_hidden_neurons</code></a> or
+    <a class="autorefs autorefs-internal" href="#connex.add_output_neurons"><code>connex.add_output_neurons</code></a>.</li>
+<li><code>key</code>: The <code>jax.random.PRNGKey</code> used for new parameter initialization.
+    Optional, keyword-only argument. Defaults to <code>jax.random.PRNGKey(0)</code>.</li>
 </ul>
-</li>
-</ul>
-<p><strong>Returns</strong>:</p>
-<p>A 2-tuple where the first element is the new <code>NeuralNetwork</code> with the new neurons
-added and parameters from original neurons retained, and the second element 
-is the sequence of the ids assigned to the added neurons in the order they 
-were passed in through the input argument <code>new_neuron_data</code>.</p>
+<p><strong>Returns:</strong></p>
+<p>A <code>NeuralNetwork</code> with the new input neurons added and parameters from the
+original network retained. The new input neurons are added <em>before</em> the
+existing input neurons. For example, if the previous input neurons were
+<code>[0, 1]</code> and new input neurons <code>[2, 3]</code> were added, the new input neurons
+would be <code>[2, 3, 0, 1]</code>.</p>
 
     </div>
 
   </div>
 
+<hr />
+
+
+  <div class="doc doc-object doc-function">
+
+
+
+<h4 id="connex.add_hidden_neurons" class="doc doc-heading">
+<code class="highlight language-python"><span class="n">connex</span><span class="o">.</span><span class="n">add_hidden_neurons</span><span class="p">(</span><span class="n">network</span><span class="p">:</span> <span class="n">NeuralNetwork</span><span class="p">,</span> <span class="n">new_hidden_neurons</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PRNGKey</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NeuralNetwork</span></code>
+
+
+<a href="#connex.add_hidden_neurons" class="headerlink" title="Permanent link">¤</a></h4>
+
+    <div class="doc doc-contents first">
+
+      <p>Add hidden neurons to the network. Note that this function only adds neurons
+themselves, not any connections associated with the new neurons, effectively
+adding them as isolated nodes in the graph. Use <a class="autorefs autorefs-internal" href="#connex.add_connections"><code>connex.add_connections</code></a>
+after this function has been called to add the desired connections.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>network</code>: The <code>NeuralNetwork</code> to add neurons to</li>
+<li><code>new_hidden_neurons</code>: A sequence of new hidden neurons (more specifically, their
+    identifiers/names) to add to the network. These must be unique, i.e. cannot
+    already exist in the  These must also specifically be hidden neurons.
+    To add input or output neurons, use <a class="autorefs autorefs-internal" href="#connex.add_input_neurons"><code>connex.add_input_neurons</code></a> or
+    <a class="autorefs autorefs-internal" href="#connex.add_output_neurons"><code>connex.add_output_neurons</code></a>.</li>
+<li><code>key</code>: The <code>jax.random.PRNGKey</code> used for new parameter initialization.
+    Optional, keyword-only argument. Defaults to <code>jax.random.PRNGKey(0)</code>.</li>
+</ul>
+<p><strong>Returns:</strong></p>
+<p>A <code>NeuralNetwork</code> with the new hidden neurons added and parameters from the
+original network retained.</p>
+
+    </div>
+
+  </div>
+
+<hr />
+
+
+  <div class="doc doc-object doc-function">
+
+
+
+<h4 id="connex.add_output_neurons" class="doc doc-heading">
+<code class="highlight language-python"><span class="n">connex</span><span class="o">.</span><span class="n">add_output_neurons</span><span class="p">(</span><span class="n">network</span><span class="p">:</span> <span class="n">NeuralNetwork</span><span class="p">,</span> <span class="n">new_output_neurons</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PRNGKey</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NeuralNetwork</span></code>
+
+
+<a href="#connex.add_output_neurons" class="headerlink" title="Permanent link">¤</a></h4>
+
+    <div class="doc doc-contents first">
+
+      <p>Add output neurons to the network. Note that this function only adds neurons
+themselves, not any connections associated with the new neurons, effectively
+adding them as isolated nodes in the graph. Use <a class="autorefs autorefs-internal" href="#connex.add_connections"><code>connex.add_connections</code></a>
+after this function has been called to add any desired connections.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>network</code>: The <code>NeuralNetwork</code> to add neurons to</li>
+<li><code>new_output_neurons</code>: A sequence of new output neurons (more specifically, their
+    identifiers/names) to add to the network. These must be unique, i.e. cannot
+    already exist in the network. These must also specifically be output neurons.
+    To add input or output neurons, use <a class="autorefs autorefs-internal" href="#connex.add_input_neurons"><code>connex.add_input_neurons</code></a> or
+    <a class="autorefs autorefs-internal" href="#connex.add_output_neurons"><code>connex.add_output_neurons</code></a>.</li>
+<li><code>key</code>: The <code>jax.random.PRNGKey</code> used for new parameter initialization.
+    Optional, keyword-only argument. Defaults to <code>jax.random.PRNGKey(0)</code>.</li>
+</ul>
+<p><strong>Returns:</strong></p>
+<p>A <code>NeuralNetwork</code> with the new output neurons added and parameters from the
+original network retained.</p>
+
+    </div>
+
+  </div>
+
+<hr />
 
 
   <div class="doc doc-object doc-function">
@@ -629,89 +685,23 @@ were passed in through the input argument <code>new_neuron_data</code>.</p>
 
 
 <h4 id="connex.remove_neurons" class="doc doc-heading">
-<code class="highlight language-python"><span class="n">connex</span><span class="o">.</span><span class="n">remove_neurons</span><span class="p">(</span><span class="n">network</span><span class="p">:</span> <span class="n">NeuralNetwork</span><span class="p">,</span> <span class="n">ids</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">NeuralNetwork</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span></code>
+<code class="highlight language-python"><span class="n">connex</span><span class="o">.</span><span class="n">remove_neurons</span><span class="p">(</span><span class="n">network</span><span class="p">:</span> <span class="n">NeuralNetwork</span><span class="p">,</span> <span class="n">neurons</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">NeuralNetwork</span></code>
 
 
 <a href="#connex.remove_neurons" class="headerlink" title="Permanent link">¤</a></h4>
 
     <div class="doc doc-contents first">
 
-      <p>Remove neurons from the network. These can be input, hidden, or output neurons.</p>
-<p><strong>Arguments</strong>:</p>
+      <p>Remove neurons and any of their incoming/outgoing connections from the network.</p>
+<p><strong>Arguments:</strong></p>
 <ul>
-<li><code>network</code>: A <code>NeuralNetwork</code> object.</li>
-<li><code>ids</code>: A sequence of <code>int</code> ids corresponding to the neurons to remove
-    from the network.</li>
+<li><code>network</code>: The <code>NeuralNetwork</code> to add neurons to</li>
+<li><code>neurons</code>: A sequence of neurons (more specifically, their identifiers/names) to
+    remove from the network. These can be input, hidden, or output neurons.</li>
 </ul>
-<p><strong>Returns</strong>:</p>
-<p>A 2-tuple where the first element is the new <code>NeuralNetwork</code> with the desired neurons
-removed (along with all respective incoming and outgoing connections)
-and parameters from original neurons retained, and the second element is
-a dictionary mapping neuron ids from the original network to their respective 
-ids in the new network.</p>
-
-    </div>
-
-  </div>
-
-
-
-  <div class="doc doc-object doc-function">
-
-
-
-<h4 id="connex.connect_networks" class="doc doc-heading">
-<code class="highlight language-python"><span class="n">connex</span><span class="o">.</span><span class="n">connect_networks</span><span class="p">(</span><span class="n">network1</span><span class="p">:</span> <span class="n">NeuralNetwork</span><span class="p">,</span> <span class="n">network2</span><span class="p">:</span> <span class="n">NeuralNetwork</span><span class="p">,</span> <span class="n">connection_map_1_to_2</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{},</span> <span class="n">connection_map_2_to_1</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{},</span> <span class="n">input_neurons</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">output_neurons</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">activation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">silu</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">output_activation_elem</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">_identity</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">output_activation_group</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">_identity</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">dropout_p</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">keep_parameters</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PRNGKey</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">NeuralNetwork</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span></code>
-
-
-<a href="#connex.connect_networks" class="headerlink" title="Permanent link">¤</a></h4>
-
-    <div class="doc doc-contents first">
-
-      <p>Connect two networks together in a specified manner.</p>
-<p><strong>Arguments</strong>:</p>
-<ul>
-<li><code>network1</code>: A <code>NeuralNetwork</code> object.</li>
-<li><code>network2</code>: A <code>NeuralNetwork</code> object.</li>
-<li><code>connection_map_1_to_2</code> A dictionary that maps an <code>int</code> id representing the
-    corresponding neuron in <code>network1</code> to a sequence of <code>int</code> ids representing
-    the corresponding neurons in <code>network2</code> to which to connect the <code>network1</code> neuron.</li>
-<li><code>connection_map_2_to_1</code> A dictionary that maps an <code>int</code> id representing the
-    corresponding neuron in <code>network2</code> to a sequence of int ids representing
-    the corresponding neurons in <code>network1</code> to which to connect the <code>network2</code> neuron.</li>
-<li><code>input_neurons</code>: A 2-tuple of <code>int</code> sequences, where the first sequence is ids
-    of <code>network1</code> neurons and the second sequence is ids of <code>network2</code> neurons. The two 
-    sequences will be concatenated (and appropriately re-numbered) to form the
-    input neurons of the new network. Optional argument. If <code>None</code>, the input neurons
-    of the new network will be the concatenation of the input neurons of <code>network1</code>
-    and <code>network2</code>.</li>
-<li><code>output_neurons</code>: A 2-tuple of <code>int</code> sequences, where the first sequence is ids
-    of <code>network1</code> neurons and the second sequence is ids of <code>network2</code> neurons. The two 
-    sequences will be concatenated (and appropriately re-numbered) to form the
-    output neurons of the new network. Optional argument. If <code>None</code>, the output neurons
-    of the new network will be the concatenation of the output neurons of <code>network1</code> 
-    and <code>network2</code>.</li>
-<li><code>activation</code>: The activation function applied element-wise to the 
-    hidden (i.e. non-input, non-output) neurons. It can itself be a 
-    trainable <code>equinox.Module</code>.</li>
-<li><code>output_activation</code>: The activation function applied element-wise to 
-    the  output neurons. It can itself be a trainable <code>equinox.Module</code>.</li>
-<li><code>dropout_p</code>: Dropout probability. If a single <code>float</code>, the same dropout
-    probability will be applied to all hidden neurons. If a <code>Sequence[float]</code>,
-    the sequence must have length <code>num_neurons</code>, where <code>dropout_p[i]</code> is the
-    dropout probability for neuron <code>i</code>. Note that this allows dropout to be 
-    applied to input and output neurons as well. Optional argument. If <code>None</code>, 
-    defaults to the concatenation of <code>network1.get_dropout_p()</code> and 
-    <code>network2.get_dropout_p()</code>.</li>
-<li><code>keep_parameters</code>: If <code>True</code>, copies the parameters of <code>network1</code> and <code>network2</code>
-    to the appropriate parameter entries of the new network.</li>
-<li><code>key</code>: The <code>PRNGKey</code> used to initialize parameters. Optional, keyword-only argument. 
-    Defaults to <code>jax.random.PRNGKey(0)</code>.</li>
-</ul>
-<p><strong>Returns</strong>:</p>
-<p>A 2-tuple where the first element is the new <code>NeuralNetwork</code>, and the second element is
-A dictionary mapping neuron ids from <code>network2</code> to their respective 
-ids in the new network. The <code>network1</code> ids are left unchanged.</p>
+<p><strong>Returns:</strong></p>
+<p>A <code>NeuralNetwork</code> with the specified neurons removed and parameters from the
+original network retained.</p>
 
     </div>
 

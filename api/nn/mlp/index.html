@@ -427,8 +427,8 @@
   
   
     <li class="md-nav__item">
-      <a href="../mcmlp/" class="md-nav__link">
-        MCMLP
+      <a href="../dense_mlp/" class="md-nav__link">
+        DenseMLP
       </a>
     </li>
   
@@ -499,7 +499,7 @@ connex.nn.MLP            (<a class="autorefs autorefs-internal" title="connex.Ne
 
 
 <h5 id="connex.nn.MLP.__init__" class="doc doc-heading">
-<code class="highlight language-python"><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">output_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">width</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">depth</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hidden_activation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">silu</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">output_activation_elem</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">_identity</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">output_activation_group</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">_identity</span><span class="o">&gt;</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PRNGKey</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+<code class="highlight language-python"><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">output_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">width</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">depth</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hidden_activation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">PjitFunction</span> <span class="n">of</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">silu</span> <span class="n">at</span> <span class="mh">0x125f0a0e0</span><span class="o">&gt;&gt;</span><span class="p">,</span> <span class="n">output_transformation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">_identity</span><span class="o">&gt;</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PRNGKey</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
 
 
 <a href="#connex.nn.MLP.__init__" class="headerlink" title="Permanent link">¤</a></h5>
@@ -512,13 +512,14 @@ connex.nn.MLP            (<a class="autorefs autorefs-internal" title="connex.Ne
 <li><code>output_size</code>: The number of neurons in the output layer.</li>
 <li><code>width</code>: The number of neurons in each hidden layer.</li>
 <li><code>depth</code>: The number of hidden layers.</li>
-<li><code>hidden_activation</code>: The activation function applied element-wise to the 
-    hidden (i.e. non-input, non-output) neurons. It can itself be a 
-    trainable equinox Module.</li>
-<li><code>output_activation</code>: The activation function applied element-wise to 
-    the  output neurons. It can itself be a trainable equinox Module.</li>
-<li><code>key</code>: The <code>PRNGKey</code> used to initialize parameters. Optional, keyword-only 
-    argument. Defaults to <code>jax.random.PRNGKey(0)</code>.</li>
+<li><code>hidden_activation</code>: The activation function applied element-wise to
+    the hidden (i.e. non-input, non-output) neurons. It can itself be a
+    trainable <code>equinox Module</code>.</li>
+<li><code>output_transformation</code>: The transformation applied group-wise to the
+    output neurons, e.g. <code>jax.nn.softmax</code>. It can itself be a trainable
+    <code>equinox.Module</code>.</li>
+<li><code>key</code>: The <code>PRNGKey</code> used to initialize parameters. Optional, keyword-only
+     argument. Defaults to <code>jax.random.PRNGKey(0)</code>.</li>
 </ul>
 
     </div>
@@ -569,13 +570,13 @@ connex.nn.MLP            (<a class="autorefs autorefs-internal" title="connex.Ne
       
       
         
-        <a href="../mcmlp/" class="md-footer__link md-footer__link--next" aria-label="Next: MCMLP" rel="next">
+        <a href="../dense_mlp/" class="md-footer__link md-footer__link--next" aria-label="Next: DenseMLP" rel="next">
           <div class="md-footer__title">
             <div class="md-ellipsis">
               <span class="md-footer__direction">
                 Next
               </span>
-              MCMLP
+              DenseMLP
             </div>
           </div>
           <div class="md-footer__button md-icon">
