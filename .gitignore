@@ -1,6 +1,7 @@
 __pycache__
 .all_objects.cache
 .pytest_cache
+.ipynb_checkpoints
 
 *.egg-info
 dist

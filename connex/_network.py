@@ -10,7 +10,7 @@ import numpy as np
 from equinox import filter_jit, Module, static_field, tree_at
 from jax import Array, jit, lax, vmap
 
-from ._utils import _identity, _invert_dict
+from ._utils import _identity, _invert_dict, DiGraphLike
 
 
 class NeuralNetwork(Module):
@@ -26,8 +26,8 @@ class NeuralNetwork(Module):
     _dropout_dict: Dict[Any, float]
     _dropout_array: Array
     _graph: nx.DiGraph = static_field()
-    _adjacency_dict: Dict[int, List[int]] = static_field()
-    _adjacency_dict_inv: Dict[int, List[int]] = static_field()
+    _adjacency_dict: Dict[Any, List[Any]] = static_field()
+    _adjacency_dict_inv: Dict[Any, List[Any]] = static_field()
     _neuron_to_id: Dict[Any, int] = static_field()
     _topo_batches: List[Array] = static_field()
     _topo_lengths: np.ndarray = static_field()
@@ -54,7 +54,7 @@ class NeuralNetwork(Module):
 
     def __init__(
         self,
-        graph: nx.DiGraph,
+        graph_data: DiGraphLike,
         input_neurons: Sequence[Any],
         output_neurons: Sequence[Any],
         hidden_activation: Callable = jnn.gelu,
@@ -70,7 +70,9 @@ class NeuralNetwork(Module):
     ):
         r"""**Arguments**:
 
-        - `graph`: A `networkx.DiGraph` representing the DAG structure of the neural
+        - `graph_data`: A `networkx.DiGraph`, or data that can be turned into a
+            `networkx.DiGraph`  by calling `networkx.DiGraph(graph_data)
+            (such as an adjacency dict) representing the DAG structure of the neural
             network. All nodes of the graph must have the same type.
         - `input_neurons`: An `Sequence` of nodes from `graph` indicating the input
             neurons. The order here matters, as the input data will be passed into
@@ -165,7 +167,9 @@ class NeuralNetwork(Module):
         - `key`: The `jax.random.PRNGKey` used for parameter initialization and dropout.
             Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
         """
-        self._set_topological_info(graph, input_neurons, output_neurons, topo_sort)
+        if not isinstance(graph_data, nx.DiGraph):
+            graph_data = nx.DiGraph(graph_data)
+        self._set_topological_info(graph_data, input_neurons, output_neurons, topo_sort)
         self._set_activations(hidden_activation, output_transformation)
         self._set_parameters(
             use_topo_norm,
@@ -687,19 +691,20 @@ class NeuralNetwork(Module):
         self._use_neuron_self_attention = bool(use_neuron_self_attention)
         self._use_adaptive_activations = bool(use_adaptive_activations)
 
-        self._topo_norm_params = _initialize_topo_norm_params(key)
-        self._attention_params_topo = _initialize_attention_params_topo(key)
+        key1, key2, key3, key4 = jr.split(key, 4)
+        self._topo_norm_params = _initialize_topo_norm_params(key1)
+        self._attention_params_topo = _initialize_attention_params_topo(key2)
         (
             self._attention_params_neuron,
             self._attention_masks_neuron,
-        ) = _initialize_attention_params_neuron(key)
+        ) = _initialize_attention_params_neuron(key3)
 
         self._indices = [
             jnp.arange(self._min_index[i], self._max_index[i] + 1, dtype=int)
             for i in range(self._num_topo_batches)
         ]
 
-        self._adaptive_activation_params = _initialize_adaptive_activation_params(key)
+        self._adaptive_activation_params = _initialize_adaptive_activation_params(key4)
 
     def _set_dropout_p_initial(
         self, dropout_p: Union[float, Mapping[Any, float]]

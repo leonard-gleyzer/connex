@@ -1,5 +1,5 @@
 from copy import deepcopy
-from typing import Any, Mapping, Optional, Sequence, Tuple
+from typing import Any, Mapping, Optional, Sequence, Tuple, Union
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -8,6 +8,7 @@ import networkx as nx
 import numpy as np
 
 from ._network import NeuralNetwork
+from ._utils import _edges_to_adjacency_dict
 
 
 def _get_id_mappings_old_new(
@@ -31,7 +32,7 @@ def _get_id_mappings_old_new(
 
 def add_connections(
     network: NeuralNetwork,
-    connections: Mapping[Any, Sequence[Any]],
+    connections: Union[Sequence[Tuple[Any, Any]], Mapping[Any, Sequence[Any]]],
     *,
     key: Optional[jr.PRNGKey] = None,
 ) -> NeuralNetwork:
@@ -40,9 +41,9 @@ def add_connections(
     **Arguments:**
 
     - `network`: A `NeuralNetwork` object.
-    - `connections`: An adjacency dict mapping an existing neuron (by its
-        NetworkX id) to its new outgoing connections. Connections that already
-        exist are ignored.
+    - `connections`: The directed edges to add. Must be a sequence of 2-tuples, or
+        an adjacency dict mapping an existing neuron (by its NetworkX id) to its
+        new outgoing connections. Connections that already exist are ignored.
     - `key`: The `jax.random.PRNGKey` used for new weight initialization.
         Optional, keyword-only argument. Defaults to `jax.random.PRNGKey(0)`.
 
@@ -54,6 +55,10 @@ def add_connections(
     # If there is nothing to change, return the network as given
     if len(connections) == 0:
         return deepcopy(network)
+
+    # Make sure connections are in adjacency dict format
+    if isinstance(connections, Sequence):
+        connections = _edges_to_adjacency_dict(connections)
 
     # Check that all new connections are between neurons actually in the network
     # and that no neuron outputs to an input neuron
@@ -271,16 +276,16 @@ def add_connections(
 
 def remove_connections(
     network: NeuralNetwork,
-    connections: Mapping[Any, Sequence[Any]],
+    connections: Union[Sequence[Tuple[Any, Any]], Mapping[Any, Sequence[Any]]],
 ) -> NeuralNetwork:
     """Remove connections from the network.
 
     **Arguments:**
 
     - `network`: A `NeuralNetwork` object.
-    - `connections`: An adjacency dict mapping an existing neuron (by its
-        NetworkX id) to its current outgoing connections to remove. Connections that
-        do not exist are ignored.
+    - `connections`: The directed edges to remove. Must be a sequence of 2-tuples, or
+        an adjacency dict mapping an existing neuron (by its NetworkX id) to its
+        new outgoing connections. Connections that already exist are ignored.
 
     **Returns:**
 
@@ -290,6 +295,10 @@ def remove_connections(
     # If there is nothing to change, return a copy of the network
     if len(connections) == 0:
         return deepcopy(network)
+
+    # Make sure connections are in adjacency dict format
+    if isinstance(connections, Sequence):
+        connections = _edges_to_adjacency_dict(connections)
 
     # Check that all new connections are between neurons actually in the network
     existing_neurons = network._graph.nodes
@@ -306,36 +315,8 @@ def remove_connections(
         edges_to_remove = [(input, output) for output in outputs]
         new_graph.remove_edges_from(edges_to_remove)
 
-    # Update topological sort
+    # Topological sort remains unchanged by removing connections
     topo_sort = deepcopy(network._topo_sort)
-    neuron_inputs = deepcopy(network._adjacency_dict_inv)
-    unique_outputs = set()
-    for input, outputs in connections.items():
-        for output in outputs:
-            unique_outputs.add(output)
-            neuron_inputs[output].remove(input)
-
-    # Remove all the output neurons of connections to remove from the topo sort
-    for output in unique_outputs:
-        topo_sort.remove(output)
-
-    # Add each of them back in immediately after the neuron with the greatest
-    # topological index that exists as one of the removed neuron's inputs,
-    # unless it has no more inputs, in which case it is placed just before the
-    # output neurons, since it doesn't really matter (it remains a valid topological
-    # order)
-    for output in unique_outputs:
-        if neuron_inputs[output]:
-            greatest_input_index = max(
-                topo_sort.index(input) for input in neuron_inputs[output]
-            )
-            topo_sort.insert(greatest_input_index + 1, output)
-        else:
-            # If no more inputs, place it just before the output neurons
-            for i, neuron in reversed(list(enumerate(topo_sort))):
-                if neuron in network._output_neurons:
-                    topo_sort.insert(i, output)
-                    break
 
     # Create new network
     new_network = NeuralNetwork(
@@ -349,7 +330,7 @@ def remove_connections(
         network._use_topo_self_attention,
         network._use_neuron_self_attention,
         network._use_adaptive_activations,
-        topo_sort=deepcopy(topo_sort),
+        topo_sort=topo_sort,
     )
 
     old_network = network
@@ -1012,22 +993,6 @@ def remove_neurons(
         if neuron not in existing_neurons:
             raise ValueError(f"Neuron {neuron} does not exist in the network.")
 
-    # Remove all incoming and outgoing connections of all neurons to be removed
-    edges_to_remove = {neuron: [] for neuron in neurons}
-    for neuron in neurons:
-        edges_to_remove[neuron].extend(network._adjacency_dict[neuron])
-        incoming_neurons = network._adjacency_dict_inv[neuron]
-        for in_neuron in incoming_neurons:
-            if in_neuron in edges_to_remove:
-                edges_to_remove[in_neuron].append(neuron)
-            else:
-                edges_to_remove[in_neuron] = []
-    edges_to_remove_unique = {
-        neuron: list(set(edges_to_remove[neuron])) for neuron in edges_to_remove
-    }
-
-    network = remove_connections(network, edges_to_remove_unique)
-
     # Set input and output neurons
     input_neurons = deepcopy(network._input_neurons)
     output_neurons = deepcopy(network._output_neurons)
@@ -1048,8 +1013,8 @@ def remove_neurons(
 
     # Update dropout dict
     dropout_dict = deepcopy(network._dropout_dict)
-    for n in neurons:
-        del dropout_dict[n]
+    for neuron in neurons:
+        del dropout_dict[neuron]
 
     # Create new network
     new_network = NeuralNetwork(

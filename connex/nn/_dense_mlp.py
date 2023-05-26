@@ -2,7 +2,6 @@ from typing import Callable, Optional
 
 import jax.nn as jnn
 import jax.random as jr
-import networkx as nx
 import numpy as np
 
 from .._network import NeuralNetwork
@@ -70,11 +69,10 @@ class DenseMLP(NeuralNetwork):
             for r in row_idx:
                 adjacency_dict[r] = list(col_idx)
             neuron += layer_size
-        graph = nx.DiGraph(adjacency_dict)
         topo_sort = list(range(num_neurons))
 
         super().__init__(
-            graph,
+            adjacency_dict,
             input_neurons,
             output_neurons,
             hidden_activation,

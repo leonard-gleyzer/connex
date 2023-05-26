@@ -88,9 +88,13 @@ def _parameter_equivalence(network1: NeuralNetwork, network2: NeuralNetwork):
             continue
         assert neuron in network2._graph.nodes()
         neurons1_in = network1._adjacency_dict_inv[neuron]
-        tb1, idx1 = network1._neuron_to_topo_batch_idx[network1._neuron_to_id[neuron]]
+        id1 = network1._neuron_to_id[neuron]
+        if id1 not in network1._neuron_to_topo_batch_idx:
+            continue
+        tb1, idx1 = network1._neuron_to_topo_batch_idx[id1]
         tb1_inputs = np.arange(network1._min_index[tb1], network1._max_index[tb1] + 1)
-        tb2, idx2 = network2._neuron_to_topo_batch_idx[network2._neuron_to_id[neuron]]
+        id2 = network2._neuron_to_id[neuron]
+        tb2, idx2 = network2._neuron_to_topo_batch_idx[id2]
         tb2_inputs = np.arange(network2._min_index[tb2], network2._max_index[tb2] + 1)
         bias1 = network1._weights_and_biases[tb1][idx1, -1]
         bias2 = network2._weights_and_biases[tb2][idx2, -1]

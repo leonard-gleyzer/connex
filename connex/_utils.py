@@ -1,4 +1,6 @@
+import time
 import typing
+from collections import defaultdict
 from typing import Any, Dict, List
 
 import jax.nn as jnn
@@ -19,6 +21,8 @@ if getattr(typing, "GENERATING_DOCUMENTATION", False):
     jnn.gelu = gelu
     _identity.__qualname__ = "identity"
 
+DiGraphLike = Any
+
 ###############################################################
 
 
@@ -34,3 +38,21 @@ def _invert_dict(_dict: Dict[Any, List[Any]]) -> Dict[Any, List[Any]]:
         if k not in _dict_inv:
             _dict_inv[k] = []
     return _dict_inv
+
+
+def timer_decorator(func):
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        print(f"Function {func.__name__} took {end_time - start_time} seconds to run.")
+        return result
+
+    return wrapper
+
+
+def _edges_to_adjacency_dict(edges):
+    adjacency_dict = defaultdict(list)
+    for u, v in edges:
+        adjacency_dict[u].append(v)
+    return dict(adjacency_dict)
