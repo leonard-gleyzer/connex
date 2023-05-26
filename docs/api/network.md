@@ -1,12 +1,11 @@
 # Neural Network
 
-The main class/object of the `connex` library.
+The main object of the `connex` library.
 
 ::: connex.NeuralNetwork
     selection:
         members:
             - __init__
             - __call__
-            - get_dropout_p
             - set_dropout_p
-            - to_networkx_graph
+            - to_networkx_weighted_digraph

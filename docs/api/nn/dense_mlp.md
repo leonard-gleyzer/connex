@@ -1,6 +1,6 @@
-# MCMLP
+# DenseMLP
 
-::: connex.nn.MCMLP
+::: connex.nn.DenseMLP
     selection:
         members:
             - __init__

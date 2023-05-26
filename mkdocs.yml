@@ -24,7 +24,7 @@ theme:
              name: Switch to light mode
     icon:
         repo: fontawesome/brands/github  # GitHub logo in top right
-        logo: "material/axis-arrow"  # Equinox logo in top left
+        logo: "material/axis-arrow"  # Connex logo in top left
     favicon: "_static/favicon.png"
     custom_dir: "docs/_overrides"  # Overriding part of the HTML
 
@@ -35,7 +35,7 @@ theme:
 site_name: Connex
 site_description: The documentation for the Connex software library.
 site_author: Leonard Gleyzer
-site_url: https://leonard-gleyzer.github.io/connex/
+site_url: https://leonard-gleyzer.github.io/connex
 
 repo_url: https://github.com/leonard-gleyzer/connex
 repo_name: leonard-gleyzer/connex
@@ -97,5 +97,5 @@ nav:
         - 'api/network.md'
         - 'api/plasticity.md'
         - Pre-built Networks:
-            - MLP: 'api/nn/mlp.md'
-            - MCMLP: 'api/nn/mcmlp.md'
+            - 'api/nn/mlp.md'
+            - 'api/nn/dense_mlp.md'

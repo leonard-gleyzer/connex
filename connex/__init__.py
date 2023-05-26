@@ -1,13 +1,12 @@
-from .network import NeuralNetwork
-from .plasticity import (
-    add_connections,
-    remove_connections,
-    add_neurons,
-    remove_neurons,
-    connect_networks
-)
+import importlib.metadata
 
 from . import nn
-
-
-__version__ = "0.1.4"
+from ._network import NeuralNetwork
+from ._plasticity import (
+    add_connections,
+    add_hidden_neurons,
+    add_input_neurons,
+    add_output_neurons,
+    remove_connections,
+    remove_neurons,
+)

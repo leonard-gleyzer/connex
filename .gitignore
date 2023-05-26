@@ -1,0 +1,13 @@
+__pycache__
+.all_objects.cache
+.pytest_cache
+.ipynb_checkpoints
+
+*.egg-info
+dist
+site
+build
+
+tests/__init__.py
+scratch.py
+TODO
