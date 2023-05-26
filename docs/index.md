@@ -18,7 +18,7 @@ pip install connex
 
 As a tiny pedagogical example, let's create a trainable neural network from the following DAG
 
-![dag](imgs/dag.png)
+![dag](docs/imgs/dag.png)
 
 with input neuron 0 and output neurons 3 and 11 (in that order) and ReLU activation for the hidden neurons:
 
@@ -41,7 +41,6 @@ adjacency_dict = {
     9: [11],
     10: [11]
 }
-graph = nx.DiGraph(adjacency_dict)
 
 # Specify the input and output neurons
 input_neurons = [0]
@@ -49,7 +48,7 @@ output_neurons = [3, 11]
 
 # Create the network
 network = cnx.NeuralNetwork(
-    graph,
+    adjacency_dict,
     input_neurons, 
     output_neurons,
     jnn.relu
@@ -62,6 +61,7 @@ That's it! A `connex.NeuralNetwork` is a subclass of `equinox.Module`, so it can
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import jax.random as jr
 import optax
 
 # Initialize the optimizer
@@ -70,14 +70,14 @@ opt_state = optim.init(eqx.filter(network, eqx.is_array))
 
 # Define the loss function
 @eqx.filter_value_and_grad
-def loss_fn(model, x, y):
-    preds = jax.vmap(model)(x)
+def loss_fn(model, x, y, keys):
+    preds = jax.vmap(model)(x, keys)
     return jnp.mean((preds - y) ** 2)
 
 # Define a single training step
 @eqx.filter_jit
-def step(model, opt_state, x, y):
-    loss, grads = loss_fn(model, x, y)
+def step(model, opt_state, x, y, keys):
+    loss, grads = loss_fn(model, x, y, keys)
     updates, opt_state = optim.update(grads, opt_state, model)
     model = eqx.apply_updates(model, updates)
     return model, opt_state, loss
@@ -87,9 +87,13 @@ x = jnp.expand_dims(jnp.linspace(0, 2 * jnp.pi, 250), 1)
 y = jnp.hstack((jnp.cos(x), jnp.sin(x)))
 
 # Training loop
-n_epochs = 1000
-for _ in range(n_epochs):
-    network, opt_state, loss = step(network, opt_state, x, y)
+n_epochs = 500
+key = jr.PRNGKey(0)
+for epoch in range(n_epochs):
+    *keys, key = jr.split(key, x.shape[0] + 1)
+    keys = jnp.array(keys)
+    network, opt_state, loss = step(network, opt_state, x, y, keys)
+    print(f"Epoch: {epoch + 1}   Loss: {loss}")
 ```
 
 Now suppose we wish to add connections 1 &rarr; 6 and 2 &rarr; 11, remove neuron 9, and set the dropout probability of all hidden neurons to 0.1:
@@ -108,8 +112,6 @@ network.set_dropout_p(0.1)
 That's all there is to it.  The new connections have been initialized with untrained parameters, and the neurons in the original network that have not been removed (along with their respective incoming and outgoing connections) have retained their trained parameters. Furthermore, since a `connex.NeuralNetwork` is an `equinox.Module`, it can seamlessly be used as a submodule inside other Equinox Modules.
 
 For more information about manipulating connectivity structure and the `NeuralNetwork` base class, please see the API section of the documentation. For examples of subclassing `NeuralNetwork`, please see `connex.nn`.
-
-Feedback is greatly appeciated!
 
 ## Citation
 
