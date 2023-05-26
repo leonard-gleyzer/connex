@@ -102,7 +102,7 @@ Now suppose we wish to add connections 1 &rarr; 6 and 2 &rarr; 11, remove neuron
 network = cnx.add_connections(network, [(1, 6), (2, 11)])
 
 # Remove neuron
-network, _ = cnx.remove_neurons(network, [9])
+network = cnx.remove_neurons(network, [9])
 
 # Set dropout probability
 network.set_dropout_p(0.1)
