@@ -18,7 +18,7 @@ pip install connex
 
 As a tiny pedagogical example, let's create a trainable neural network from the following DAG
 
-![dag](docs/imgs/dag.png)
+![dag](imgs/dag.png)
 
 with input neuron 0 and output neurons 3 and 11 (in that order) and ReLU activation for the hidden neurons:
 
