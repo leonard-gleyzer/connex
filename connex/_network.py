@@ -71,7 +71,7 @@ class NeuralNetwork(Module):
         r"""**Arguments**:
 
         - `graph_data`: A `networkx.DiGraph`, or data that can be turned into a
-            `networkx.DiGraph`  by calling `networkx.DiGraph(graph_data)
+            `networkx.DiGraph`  by calling `networkx.DiGraph(graph_data)`
             (such as an adjacency dict) representing the DAG structure of the neural
             network. All nodes of the graph must have the same type.
         - `input_neurons`: An `Sequence` of nodes from `graph` indicating the input
