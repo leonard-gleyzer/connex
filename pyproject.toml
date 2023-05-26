@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Mathematics",
 ]
 urls = {repository = "https://github.com/leonard-gleyzer/connex" }
-dependencies = ["equinox>=0.10.4", "jax>=0.4.4"]
+dependencies = ["equinox>=0.10.4", "jax>=0.4.4", "networkx>=0.3.0"]
 
 [build-system]
 requires = ["hatchling"]
