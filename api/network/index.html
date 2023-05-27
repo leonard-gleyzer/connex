@@ -659,39 +659,6 @@ the order of the output neurons passed in during initialization.</p>
 
 
 
-<h5 id="connex.NeuralNetwork.set_dropout_p" class="doc doc-heading">
-<code class="highlight language-python"><span class="n">set_dropout_p</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dropout_p</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="nb">float</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="kc">None</span></code>
-
-
-<a href="#connex.NeuralNetwork.set_dropout_p" class="headerlink" title="Permanent link">¤</a></h5>
-
-    <div class="doc doc-contents ">
-
-      <p>Set the per-neuron dropout probabilities.</p>
-<p><strong>Arguments:</strong></p>
-<ul>
-<li><code>dropout_p</code>: Either a float or mapping from neuron (<code>Any</code>) to float. If a
-    single float, all hidden neurons will have that dropout probability, and
-    all input and output neurons will have dropout probability 0 by default.
-    If a <code>Mapping</code>, it is assumed that <code>dropout_p</code> maps a neuron to its dropout
-    probability, and all unspecified neurons will retain their current dropout
-    probability.</li>
-</ul>
-<p><strong>Returns:</strong></p>
-<p>A copy of the current network with dropout probabilities as specified.
-The original network (including unspecified dropout probabilities) is left
-unchanged.</p>
-
-    </div>
-
-  </div>
-
-
-
-  <div class="doc doc-object doc-method">
-
-
-
 <h5 id="connex.NeuralNetwork.to_networkx_weighted_digraph" class="doc doc-heading">
 <code class="highlight language-python"><span class="n">to_networkx_weighted_digraph</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DiGraph</span></code>
 

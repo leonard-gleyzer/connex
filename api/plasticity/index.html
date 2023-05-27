@@ -405,6 +405,13 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#connex.set_dropout_p" class="md-nav__link">
+    set_dropout_p()
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -496,6 +503,7 @@
                 
                 <h1 id="artificial-neuroplasticity">Artificial Neuroplasticity<a class="headerlink" href="#artificial-neuroplasticity" title="Permanent link">¤</a></h1>
 <p>The brain has a remarkable ability to rewire itself under the right conditions, known as plasticity. This includes, among other processes, the formation of new synapses (synaptogenesis), the removal of synapses (synaptic pruning), the formation of new neurons (neurogenesis), and the removal of neurons (programmed cell death).</p>
+<p>Furthermore, specific neurons/clusters of neurons can be made to be more or less likely to fire, known as neuromodulation.</p>
 <p>We provide the following code functionality to mirror these processes. All return a copy of the network and leave the input network unmodified.</p>
 
 
@@ -702,6 +710,41 @@ original network retained.</p>
 <p><strong>Returns:</strong></p>
 <p>A <code>NeuralNetwork</code> with the specified neurons removed and parameters from the
 original network retained.</p>
+
+    </div>
+
+  </div>
+
+<hr />
+
+
+  <div class="doc doc-object doc-function">
+
+
+
+<h4 id="connex.set_dropout_p" class="doc doc-heading">
+<code class="highlight language-python"><span class="n">connex</span><span class="o">.</span><span class="n">set_dropout_p</span><span class="p">(</span><span class="n">network</span><span class="p">:</span> <span class="n">NeuralNetwork</span><span class="p">,</span> <span class="n">dropout_p</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="nb">float</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="n">NeuralNetwork</span></code>
+
+
+<a href="#connex.set_dropout_p" class="headerlink" title="Permanent link">¤</a></h4>
+
+    <div class="doc doc-contents first">
+
+      <p>Set the per-neuron dropout probabilities.</p>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>network</code>: The <code>NeuralNetwork</code> whose dropout probabilities will be modified.</li>
+<li><code>dropout_p</code>: Either a float or mapping from neuron (<code>Any</code>) to float. If a
+    single float, all hidden neurons will have that dropout probability, and
+    all input and output neurons will have dropout probability 0 by default.
+    If a <code>Mapping</code>, it is assumed that <code>dropout_p</code> maps a neuron to its dropout
+    probability, and all unspecified neurons will retain their current dropout
+    probability.</li>
+</ul>
+<p><strong>Returns:</strong></p>
+<p>A copy of the network with dropout probabilities as specified.
+The original network (including unspecified dropout probabilities) is left
+unchanged.</p>
 
     </div>
 
