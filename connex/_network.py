@@ -181,11 +181,7 @@ class NeuralNetwork(Module):
         self._set_dropout_p_initial(dropout_p)
 
     @filter_jit
-    def __call__(
-        self,
-        x: Array,
-        key: Optional[jr.PRNGKey] = None,
-    ) -> Array:
+    def __call__(self, x: Array, key: jr.PRNGKey) -> Array:
         """The forward pass of the network.
         Neurons are "fired" in topological batch order -- see Section 2.2 of
 
