@@ -744,7 +744,9 @@ class NeuralNetwork(Module):
     ################## Public methods ###################  # noqa: E266
     #####################################################
 
-    def set_dropout_p(self, dropout_p: Union[float, Mapping[Any, float]]) -> None:
+    def set_dropout_p(
+        self, dropout_p: Union[float, Mapping[Any, float]]
+    ) -> "NeuralNetwork":
         """Set the per-neuron dropout probabilities.
 
         **Arguments:**

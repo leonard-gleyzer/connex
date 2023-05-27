@@ -1169,3 +1169,57 @@ def remove_neurons(
             new_adaptive_activation_params,
         ),
     )
+
+
+def set_dropout_p(
+    network: NeuralNetwork, dropout_p: Union[float, Mapping[Any, float]]
+) -> NeuralNetwork:
+    """Set the per-neuron dropout probabilities.
+
+    **Arguments:**
+
+    - `network`: The `NeuralNetwork` whose dropout probabilities will be modified.
+    - `dropout_p`: Either a float or mapping from neuron (`Any`) to float. If a
+        single float, all hidden neurons will have that dropout probability, and
+        all input and output neurons will have dropout probability 0 by default.
+        If a `Mapping`, it is assumed that `dropout_p` maps a neuron to its dropout
+        probability, and all unspecified neurons will retain their current dropout
+        probability.
+
+    **Returns:**
+
+    A copy of the network with dropout probabilities as specified.
+    The original network (including unspecified dropout probabilities) is left
+    unchanged.
+    """
+
+    def update_dropout_probabilities():
+        if isinstance(dropout_p, float):
+            hidden_dropout = {neuron: dropout_p for neuron in network._hidden_neurons}
+            input_output_dropout = {
+                neuron: 0.0
+                for neuron in network._input_neurons + network._output_neurons
+            }
+            return {**hidden_dropout, **input_output_dropout}
+        else:
+            assert isinstance(dropout_p, Mapping)
+            for n, d in dropout_p.items():
+                if n not in network._graph.nodes:
+                    raise ValueError(f"'{n}' is not present in the network.")
+                if not isinstance(d, float):
+                    raise TypeError(f"Invalid dropout value of {d} for neuron {n}.")
+                return {**network._dropout_dict, **dropout_p}
+
+    dropout_dict = update_dropout_probabilities()
+    dropout_array = jnp.array(
+        [dropout_dict[neuron] for neuron in network._topo_sort], dtype=float
+    )
+
+    assert jnp.all(jnp.greater_equal(dropout_array, 0))
+    assert jnp.all(jnp.less_equal(dropout_array, 1))
+
+    return eqx.tree_at(
+        lambda network: (network._dropout_dict, network._dropout_array),
+        network,
+        (dropout_dict, dropout_array),
+    )

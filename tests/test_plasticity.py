@@ -1,6 +1,12 @@
+from copy import deepcopy
+
+import equinox as eqx
+import jax
 import jax.numpy as jnp
+import jax.random as jr
 import networkx as nx
 import numpy as np
+import optax
 import pytest
 
 from connex import (
@@ -11,6 +17,7 @@ from connex import (
     NeuralNetwork,
     remove_connections,
     remove_neurons,
+    set_dropout_p,
 )
 from connex._plasticity import _get_id_mappings_old_new
 
@@ -360,3 +367,61 @@ def test_remove_neurons():
 
     new_network = remove_neurons(old_network, [1, 3])
     _parameter_equivalence(new_network, old_network)
+
+
+def test_dropout_probabilities():
+    graph = nx.DiGraph()
+    graph.add_edges_from([(0, 1), (0, 2), (1, 3), (2, 3)])
+    input_neurons = [0]
+    output_neurons = [3]
+    network = NeuralNetwork(
+        graph,
+        input_neurons,
+        output_neurons,
+        hidden_activation=eqx.nn.MLP(1, 1, 2, 2, key=jr.PRNGKey(0)),
+        dropout_p=0.5,
+    )
+    network_copy = deepcopy(network)
+
+    # Initialize the optimizer
+    optim = optax.adam(1e-3)
+    opt_state = optim.init(eqx.filter(network, eqx.is_array))
+
+    # Define the loss function
+    @eqx.filter_value_and_grad
+    def loss_fn(model, x, y, keys):
+        preds = jax.vmap(model)(x, keys)
+        return jnp.mean((preds - y) ** 2)
+
+    # Define a single training step
+    @eqx.filter_jit
+    def step(model, opt_state, x, y, keys):
+        loss, grads = loss_fn(model, x, y, keys)
+        updates, opt_state = optim.update(grads, opt_state, model)
+        model = eqx.apply_updates(model, updates)
+        return model, opt_state, loss
+
+    # Toy data
+    x = jnp.expand_dims(jnp.linspace(0, 2 * jnp.pi, 250), 1)
+    y = jnp.hstack((jnp.cos(x), jnp.sin(x)))
+
+    # Training loop
+    n_epochs = 10
+    for _ in range(n_epochs):
+        keys = jnp.array(jr.split(jr.PRNGKey(0), x.shape[0]))
+        network, opt_state, _ = step(network, opt_state, x, y, keys)
+
+    expected_dropout_array = np.zeros((network._num_neurons,))
+    expected_dropout_array[
+        len(network._input_neurons) : -len(network._output_neurons)
+    ] = 0.5
+    expected_dropout_array = jnp.array(expected_dropout_array)
+    assert jnp.array_equal(network._dropout_array, expected_dropout_array)
+    assert not jnp.array_equal(
+        network._hidden_activation.layers[0],
+        network_copy._hidden_activation.layers[0],
+    )
+
+    network = set_dropout_p(network, {1: 0.4})
+    assert network._dropout_dict[1] == 0.4
+    assert network._dropout_array[1] == 0.4

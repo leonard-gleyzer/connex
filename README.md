@@ -105,7 +105,7 @@ network = cnx.add_connections(network, [(1, 6), (2, 11)])
 network = cnx.remove_neurons(network, [9])
 
 # Set dropout probability
-network.set_dropout_p(0.1)
+network = cnx.set_dropout_p(network, 0.1)
 ```
 
 That's all there is to it.  The new connections have been initialized with untrained parameters, and the neurons in the original network that have not been removed (along with their respective incoming and outgoing connections) have retained their trained parameters. Furthermore, since a `connex.NeuralNetwork` is an `equinox.Module`, it can seamlessly be used as a submodule inside other Equinox Modules.

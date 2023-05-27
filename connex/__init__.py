@@ -9,4 +9,5 @@ from ._plasticity import (
     add_output_neurons,
     remove_connections,
     remove_neurons,
+    set_dropout_p,
 )
