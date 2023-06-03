@@ -69,7 +69,7 @@ opt_state = optim.init(eqx.filter(network, eqx.is_array))
 
 # Define the loss function
 @eqx.filter_value_and_grad
-def loss_fn(model, x, y, keys):
+def loss_fn(model, x, y):
     preds = jax.vmap(model)(x)
     return jnp.mean((preds - y) ** 2)
 
