@@ -1,5 +1,3 @@
-import importlib.metadata
-
 from . import nn
 from ._network import NeuralNetwork
 from ._plasticity import (

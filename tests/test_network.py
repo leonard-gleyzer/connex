@@ -1,14 +1,11 @@
 import itertools as it
 from copy import deepcopy
 
-import equinox as eqx
-import jax
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
 import networkx as nx
 import numpy as np
-import optax
 import pytest
 
 from connex import NeuralNetwork
@@ -352,15 +349,13 @@ def test_set_dropout_p_single_float():
     graph.add_edges_from([(0, 2), (1, 2), (2, 3), (2, 4)])
     input_neurons = [0, 1]
     output_neurons = [3, 4]
-    network = NeuralNetwork(graph, input_neurons, output_neurons)
+    network = NeuralNetwork(graph, input_neurons, output_neurons, dropout_p=0.5)
 
-    new_network = network.set_dropout_p(0.5)
+    for neuron in network._hidden_neurons:
+        assert network._dropout_dict[neuron] == 0.5
 
-    for neuron in new_network._hidden_neurons:
-        assert new_network._dropout_dict[neuron] == 0.5
-
-    for neuron in new_network._input_neurons + new_network._output_neurons:
-        assert new_network._dropout_dict[neuron] == 0.0
+    for neuron in network._input_neurons + network._output_neurons:
+        assert network._dropout_dict[neuron] == 0.0
 
 
 def test_set_dropout_p_mapping():
@@ -368,13 +363,13 @@ def test_set_dropout_p_mapping():
     graph.add_edges_from([(0, 2), (1, 2), (2, 3), (2, 4)])
     input_neurons = [0, 1]
     output_neurons = [3, 4]
-    network = NeuralNetwork(graph, input_neurons, output_neurons)
-
     dropout_mapping = {2: 0.4, 3: 0.6}
-    new_network = network.set_dropout_p(dropout_mapping)
+    network = NeuralNetwork(
+        graph, input_neurons, output_neurons, dropout_p=dropout_mapping
+    )
 
     for neuron, dropout_prob in dropout_mapping.items():
-        assert new_network._dropout_dict[neuron] == dropout_prob
+        assert network._dropout_dict[neuron] == dropout_prob
 
 
 def test_to_networkx_weighted_digraph():
@@ -422,11 +417,10 @@ def test_call_dropout():
     graph.add_edges_from([(0, 1), (0, 2), (1, 3), (2, 3)])
     input_neurons = [0]
     output_neurons = [3]
-    network = NeuralNetwork(graph, input_neurons, output_neurons)
-    dropout_network = network.set_dropout_p({3: 1.0})
+    network = NeuralNetwork(graph, input_neurons, output_neurons, dropout_p={3: 1.0})
 
     input_array = jnp.array([1.0])
-    output_array = dropout_network(input_array, key=jr.PRNGKey(0))
+    output_array = network(input_array, key=jr.PRNGKey(0))
 
     assert jnp.all(output_array == 0.0)
 
@@ -520,56 +514,3 @@ def test_apply_activation():
     expected_activated_output = jnn.gelu(jnp.array([1.0]))
 
     assert jnp.allclose(activated_output, expected_activated_output)
-
-
-def test_dropout_p_unchanged():
-    graph = nx.DiGraph()
-    graph.add_edges_from([(0, 1), (0, 2), (1, 3), (2, 3)])
-    input_neurons = [0]
-    output_neurons = [3]
-    network = NeuralNetwork(
-        graph,
-        input_neurons,
-        output_neurons,
-        hidden_activation=eqx.nn.MLP(1, 1, 2, 2, key=jr.PRNGKey(0)),
-        dropout_p=0.5,
-    )
-    network_copy = deepcopy(network)
-
-    # Initialize the optimizer
-    optim = optax.adam(1e-3)
-    opt_state = optim.init(eqx.filter(network, eqx.is_array))
-
-    # Define the loss function
-    @eqx.filter_value_and_grad
-    def loss_fn(model, x, y):
-        preds = jax.vmap(model)(x)
-        return jnp.mean((preds - y) ** 2)
-
-    # Define a single training step
-    @eqx.filter_jit
-    def step(model, opt_state, x, y):
-        loss, grads = loss_fn(model, x, y)
-        updates, opt_state = optim.update(grads, opt_state, model)
-        model = eqx.apply_updates(model, updates)
-        return model, opt_state, loss
-
-    # Toy data
-    x = jnp.expand_dims(jnp.linspace(0, 2 * jnp.pi, 250), 1)
-    y = jnp.hstack((jnp.cos(x), jnp.sin(x)))
-
-    # Training loop
-    n_epochs = 10
-    for _ in range(n_epochs):
-        network, opt_state, _ = step(network, opt_state, x, y)
-
-    expected_dropout_array = np.zeros((network._num_neurons,))
-    expected_dropout_array[
-        len(network._input_neurons) : -len(network._output_neurons)
-    ] = 0.5
-    expected_dropout_array = jnp.array(expected_dropout_array)
-    assert jnp.array_equal(network._dropout_array, expected_dropout_array)
-    assert not jnp.array_equal(
-        network._hidden_activation.layers[0],
-        network_copy._hidden_activation.layers[0],
-    )

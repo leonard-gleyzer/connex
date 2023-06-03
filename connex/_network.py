@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import networkx as nx
 import numpy as np
-from equinox import filter_jit, Module, static_field, tree_at
+from equinox import filter_jit, Module, static_field
 from jax import Array, jit, lax, vmap
 
 from ._utils import _identity, _invert_dict, _keygen, DiGraphLike
@@ -740,57 +740,6 @@ class NeuralNetwork(Module):
     #####################################################
     ################## Public methods ###################  # noqa: E266
     #####################################################
-
-    def set_dropout_p(
-        self, dropout_p: Union[float, Mapping[Any, float]]
-    ) -> "NeuralNetwork":
-        """Set the per-neuron dropout probabilities.
-
-        **Arguments:**
-
-        - `dropout_p`: Either a float or mapping from neuron (`Any`) to float. If a
-            single float, all hidden neurons will have that dropout probability, and
-            all input and output neurons will have dropout probability 0 by default.
-            If a `Mapping`, it is assumed that `dropout_p` maps a neuron to its dropout
-            probability, and all unspecified neurons will retain their current dropout
-            probability.
-
-        **Returns:**
-
-        A copy of the current network with dropout probabilities as specified.
-        The original network (including unspecified dropout probabilities) is left
-        unchanged.
-        """
-
-        def update_dropout_probabilities():
-            if isinstance(dropout_p, float):
-                hidden_dropout = {neuron: dropout_p for neuron in self._hidden_neurons}
-                input_output_dropout = {
-                    neuron: 0.0 for neuron in self._input_neurons + self._output_neurons
-                }
-                return {**hidden_dropout, **input_output_dropout}
-            else:
-                assert isinstance(dropout_p, Mapping)
-                for n, d in dropout_p.items():
-                    if n not in self._graph.nodes:
-                        raise ValueError(f"'{n}' is not present in the network.")
-                    if not isinstance(d, float):
-                        raise TypeError(f"Invalid dropout value of {d} for neuron {n}.")
-                    return {**self._dropout_dict, **dropout_p}
-
-        dropout_dict = update_dropout_probabilities()
-        dropout_array = jnp.array(
-            [dropout_dict[neuron] for neuron in self._topo_sort], dtype=float
-        )
-
-        assert jnp.all(jnp.greater_equal(dropout_array, 0))
-        assert jnp.all(jnp.less_equal(dropout_array, 1))
-
-        return tree_at(
-            lambda network: (network._dropout_dict, network._dropout_array),
-            self,
-            (dropout_dict, dropout_array),
-        )
 
     def to_networkx_weighted_digraph(self) -> nx.DiGraph:
         """Returns a `networkx.DiGraph` represention of the network with neuron weights
