@@ -4,6 +4,7 @@ from collections import defaultdict
 from typing import Any, Dict, List
 
 import jax.nn as jnn
+import jax.random as jr
 
 
 # Documentation helpers.
@@ -56,3 +57,11 @@ def _edges_to_adjacency_dict(edges):
     for u, v in edges:
         adjacency_dict[u].append(v)
     return dict(adjacency_dict)
+
+
+def _keygen():
+    curr_time = time.time()
+    curr_time = str(curr_time).replace(".", "")
+    seed = int(curr_time)
+    key = jr.PRNGKey(seed)
+    return key

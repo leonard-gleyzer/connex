@@ -389,14 +389,14 @@ def test_dropout_probabilities():
 
     # Define the loss function
     @eqx.filter_value_and_grad
-    def loss_fn(model, x, y, keys):
-        preds = jax.vmap(model)(x, keys)
+    def loss_fn(model, x, y):
+        preds = jax.vmap(model)(x)
         return jnp.mean((preds - y) ** 2)
 
     # Define a single training step
     @eqx.filter_jit
-    def step(model, opt_state, x, y, keys):
-        loss, grads = loss_fn(model, x, y, keys)
+    def step(model, opt_state, x, y):
+        loss, grads = loss_fn(model, x, y)
         updates, opt_state = optim.update(grads, opt_state, model)
         model = eqx.apply_updates(model, updates)
         return model, opt_state, loss
@@ -408,8 +408,7 @@ def test_dropout_probabilities():
     # Training loop
     n_epochs = 10
     for _ in range(n_epochs):
-        keys = jnp.array(jr.split(jr.PRNGKey(0), x.shape[0]))
-        network, opt_state, _ = step(network, opt_state, x, y, keys)
+        network, opt_state, _ = step(network, opt_state, x, y)
 
     expected_dropout_array = np.zeros((network._num_neurons,))
     expected_dropout_array[

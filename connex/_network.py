@@ -10,7 +10,7 @@ import numpy as np
 from equinox import filter_jit, Module, static_field, tree_at
 from jax import Array, jit, lax, vmap
 
-from ._utils import _identity, _invert_dict, DiGraphLike
+from ._utils import _identity, _invert_dict, _keygen, DiGraphLike
 
 
 class NeuralNetwork(Module):
@@ -181,7 +181,7 @@ class NeuralNetwork(Module):
         self._set_dropout_p_initial(dropout_p)
 
     @filter_jit
-    def __call__(self, x: Array, key: jr.PRNGKey) -> Array:
+    def __call__(self, x: Array, *, key: Optional[jr.PRNGKey] = None) -> Array:
         """The forward pass of the network.
         Neurons are "fired" in topological batch order -- see Section 2.2 of
 
@@ -203,8 +203,8 @@ class NeuralNetwork(Module):
         - `x`: The input array to the network for the forward pass. The individual
             values will be written to the input neurons in the order passed in during
             initialization.
-        - `key`: A `jax.random.PRNGKey` used for dropout. Must be provided, even if all
-            dropout probabilities are 0.
+        - `key`: A `jax.random.PRNGKey` used for dropout. Optional, keyword-only
+            argument. If `None`, a key will be generated using the current time.
 
         **Returns**:
 
@@ -215,6 +215,7 @@ class NeuralNetwork(Module):
         values = jnp.zeros((self._num_neurons,))
 
         # Dropout
+        key = _keygen() if key is None else key
         rand = jr.uniform(key, self._dropout_array.shape, minval=0, maxval=1)
         dropout_mask = jnp.greater(rand, self._dropout_array)
 

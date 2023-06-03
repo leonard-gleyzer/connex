@@ -70,13 +70,13 @@ opt_state = optim.init(eqx.filter(network, eqx.is_array))
 # Define the loss function
 @eqx.filter_value_and_grad
 def loss_fn(model, x, y, keys):
-    preds = jax.vmap(model)(x, keys)
+    preds = jax.vmap(model)(x)
     return jnp.mean((preds - y) ** 2)
 
 # Define a single training step
 @eqx.filter_jit
-def step(model, opt_state, x, y, keys):
-    loss, grads = loss_fn(model, x, y, keys)
+def step(model, opt_state, x, y):
+    loss, grads = loss_fn(model, x, y)
     updates, opt_state = optim.update(grads, opt_state, model)
     model = eqx.apply_updates(model, updates)
     return model, opt_state, loss
@@ -89,9 +89,7 @@ y = jnp.hstack((jnp.cos(x), jnp.sin(x)))
 n_epochs = 500
 key = jr.PRNGKey(0)
 for epoch in range(n_epochs):
-    *keys, key = jr.split(key, x.shape[0] + 1)
-    keys = jnp.array(keys)
-    network, opt_state, loss = step(network, opt_state, x, y, keys)
+    network, opt_state, loss = step(network, opt_state, x, y)
     print(f"Epoch: {epoch + 1}   Loss: {loss}")
 ```
 
