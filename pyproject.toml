@@ -1,9 +1,9 @@
 [project]
 name = "connex"
 version = "0.2.1"
-description = "Making neural networks more neural."
+description = "Fine-grained, dynamic control of neural network topology in JAX."
 readme = "README.md"
-requires-python ="~=3.8"
+requires-python ="~=3.9"
 license = {file = "LICENSE"}
 authors = [
   {name = "Leonard Gleyzer", email = "lenny@lenn.ai"},
@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Mathematics",
 ]
 urls = {repository = "https://github.com/leonard-gleyzer/connex" }
-dependencies = ["equinox>=0.10.4", "jax>=0.4.4", "networkx>=0.3.0"]
+dependencies = ["equinox>=0.10.5", "jax>=0.4.4", "networkx>=0.3.0"]
 
 [build-system]
 requires = ["hatchling"]
