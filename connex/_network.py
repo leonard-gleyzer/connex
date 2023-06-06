@@ -261,7 +261,7 @@ class NeuralNetwork(Module):
             # Neuron-level self-attention
             if self._use_neuron_self_attention:
                 _apply_neuron_self_attention = vmap(
-                    self._apply_neuron_self_attention, in_axes=[0, 0, 0, None]
+                    self._apply_neuron_self_attention, in_axes=(0, 0, 0, None)
                 )
                 vals = _apply_neuron_self_attention(
                     tb, attn_params_n, attn_mask_n, vals
@@ -272,12 +272,11 @@ class NeuralNetwork(Module):
             affine = (weights * mask) @ vals + biases
 
             # Apply activations/dropout
-            output_values = (
-                vmap(self._apply_activation, in_axes=[0, 0, None])(
-                    tb, affine, ada_params
-                )
-                * dropout_mask[tb]
-            )
+            if self._use_adaptive_activations:
+                _apply_activation = vmap(self._apply_activation)
+            else:
+                _apply_activation = vmap(self._apply_activation, in_axes=(0, 0, None))
+            output_values = _apply_activation(tb, affine, ada_params) * dropout_mask[tb]
 
             # Set new values
             values = values.at[tb].set(output_values)
