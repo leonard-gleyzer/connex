@@ -513,7 +513,7 @@ layers, not just the most recent one, in a similar manner to DenseNet.</p>
 
 
 <h5 id="connex.nn.DenseMLP.__init__" class="doc doc-heading">
-<code class="highlight language-python"><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">output_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">width</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">depth</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hidden_activation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">PjitFunction</span> <span class="n">of</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">silu</span> <span class="n">at</span> <span class="mh">0x1270d8820</span><span class="o">&gt;&gt;</span><span class="p">,</span> <span class="n">output_transformation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">_identity</span><span class="o">&gt;</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PRNGKey</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+<code class="highlight language-python"><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">output_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">width</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">depth</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hidden_activation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">gelu</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">output_transformation</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">_identity</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">dropout_p</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">use_topo_norm</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">use_topo_self_attention</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">use_neuron_self_attention</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">use_adaptive_activations</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PRNGKey</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span></code>
 
 
 <a href="#connex.nn.DenseMLP.__init__" class="headerlink" title="Permanent link">¤</a></h5>
@@ -532,8 +532,84 @@ layers, not just the most recent one, in a similar manner to DenseNet.</p>
 <li><code>output_transformation</code>: The transformation applied group-wise to the
     output neurons, e.g. <code>jax.nn.softmax</code>. It can itself be a trainable
     <code>equinox.Module</code>.</li>
+<li><code>dropout_p</code>: Dropout probability. If a single <code>float</code>, the same dropout
+    probability will be applied to all hidden neurons.
+    If a <code>Mapping[Any, float]</code>, <code>dropout_p[i]</code> refers to the dropout
+    probability of neuron <code>i</code>. All neurons default to zero unless otherwise
+    specified. Note that this allows dropout to be applied to input and output
+    neurons as well.</li>
+<li>
+<p><code>use_topo_norm</code>: A <code>bool</code> indicating whether to apply a topological batch-
+    version of Layer Norm,</p>
+<details class="cite">
+<summary>Cite</summary>
+<p><a href="https://arxiv.org/abs/1607.06450">Layer Normalization</a>
+<div class="highlight"><pre><span></span><code><span class="nc">@article</span><span class="p">{</span><span class="nl">ba2016layer</span><span class="p">,</span>
+<span class="w">    </span><span class="na">author</span><span class="p">=</span><span class="s">{Jimmy Lei Ba, Jamie Ryan Kriso, Geoffrey E. Hinton}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">title</span><span class="p">=</span><span class="s">{Layer Normalization}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">year</span><span class="p">=</span><span class="s">{2016}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">journal</span><span class="p">=</span><span class="s">{arXiv:1607.06450}</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div></p>
+</details>
+<p>where the collective inputs of each topological batch are standardized
+(made to have mean 0 and variance 1), with learnable elementwise-affine
+parameters <code>gamma</code> and <code>beta</code>.
+- <code>use_topo_self_attention</code>: A <code>bool</code> indicating whether to apply
+(single-headed) self-attention to each topological batch's collective
+inputs.</p>
+<details class="cite">
+<summary>Cite</summary>
+<p><a href="https://arxiv.org/abs/1706.03762">Attention is All You Need</a>
+<div class="highlight"><pre><span></span><code><span class="nc">@inproceedings</span><span class="p">{</span><span class="nl">vaswani2017attention</span><span class="p">,</span>
+<span class="w">    </span><span class="na">author</span><span class="p">=</span><span class="s">{Vaswani, Ashish and Shazeer, Noam and Parmar, Niki and</span>
+<span class="s">            Uszkoreit, Jakob and Jones, Llion and Gomez, Aidan N and</span>
+<span class="s">            Kaiser, {\L}ukasz and Polosukhin, Illia}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">booktitle</span><span class="p">=</span><span class="s">{Advances in Neural Information Processing Systems}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">publisher</span><span class="p">=</span><span class="s">{Curran Associates, Inc.}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">title</span><span class="p">=</span><span class="s">{Attention is All You Need}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">volume</span><span class="p">=</span><span class="s">{30}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">year</span><span class="p">=</span><span class="s">{2017}</span>
+<span class="p">}</span>
+</code></pre></div></p>
+</details>
+</li>
+<li>
+<p><code>use_neuron_self_attention</code>: A <code>bool</code> indicating whether to apply neuron-wise
+    self-attention, where each neuron applies (single-headed) self-attention to
+    its inputs. If both <code>_use_neuron_self_attention</code> and <code>use_neuron_norm</code> are
+    <code>True</code>, normalization is applied before self-attention.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Neuron-level self-attention will use significantly more memory than
+than topo-level self-attention.</p>
+</div>
+</li>
+<li>
+<p><code>use_adaptive_activations</code>: A bool indicating whether to use neuron-wise
+    adaptive activations, where all hidden activations transform as
+    <code>σ(x) -&gt; a * σ(b * x)</code>, where <code>a</code>, <code>b</code> are trainable scalar parameters
+    unique to each neuron.</p>
+<details class="cite">
+<summary>Cite</summary>
+<p><a href="https://arxiv.org/abs/1909.12228">Locally adaptive activation functions with slope recovery term for
+ deep and physics-informed neural networks</a>  # noqa: E501
+<div class="highlight"><pre><span></span><code><span class="nc">@article</span><span class="p">{</span><span class="nl">Jagtap_2020</span><span class="p">,</span>
+<span class="w">    </span><span class="na">author</span><span class="p">=</span><span class="s">{Ameya D. Jagtap, Kenji Kawaguchi, George Em Karniadakis}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">title</span><span class="p">=</span><span class="s">{Locally adaptive activation functions with slope recovery</span>
+<span class="s">           term for deep and physics-informed neural networks}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">year</span><span class="p">=</span><span class="s">{2020}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">publisher</span><span class="p">=</span><span class="s">{The Royal Society}</span><span class="p">,</span>
+<span class="w">    </span><span class="na">journal</span><span class="p">=</span><span class="s">{Proceedings of the Royal Society A: Mathematical, Physical</span>
+<span class="s">    and Engineering Sciences}</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div></p>
+</details>
+<ul>
 <li><code>key</code>: The <code>PRNGKey</code> used to initialize parameters. Optional, keyword-only
-    argument. Defaults to <code>jax.random.PRNGKey(0)</code>.</li>
+argument. Defaults to <code>jax.random.PRNGKey(0)</code>.</li>
+</ul>
+</li>
 </ul>
 
     </div>
