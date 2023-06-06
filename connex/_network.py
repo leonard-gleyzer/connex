@@ -269,14 +269,17 @@ class NeuralNetwork(Module):
 
             # Affine transformation, wx + b
             weights, biases = w_and_b[:, :-1], w_and_b[:, -1]
-            affine = (weights * mask) @ vals + biases
+            if self._use_neuron_self_attention:
+                affine = vmap(jnp.dot)(weights * mask, vals) + biases
+            else:
+                affine = (weights * mask) @ vals + biases
 
             # Apply activations/dropout
-            if self._use_adaptive_activations:
-                _apply_activation = vmap(self._apply_activation)
-            else:
-                _apply_activation = vmap(self._apply_activation, in_axes=(0, 0, None))
-            output_values = _apply_activation(tb, affine, ada_params) * dropout_mask[tb]
+            if not self._use_adaptive_activations:
+                ada_params = jnp.ones((tb.shape[0], 2))
+            output_values = (
+                vmap(self._apply_activation)(tb, affine, ada_params) * dropout_mask[tb]
+            )
 
             # Set new values
             values = values.at[tb].set(output_values)
@@ -336,10 +339,7 @@ class NeuralNetwork(Module):
 
     def _apply_activation(self, id: Array, affine: Array, ada_params: Array) -> Array:
         """Function for a single neuron to apply its activation."""
-        ones = jnp.ones((2,))
-        a, b = lax.cond(
-            self._use_adaptive_activations, lambda: ada_params * ones, lambda: ones
-        )
+        a, b = ada_params
         _expand = ft.partial(jnp.expand_dims, axis=0)
         output = lax.cond(
             jnp.isin(id, self._output_neurons_id),

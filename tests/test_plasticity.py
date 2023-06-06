@@ -369,7 +369,7 @@ def test_remove_neurons():
     _parameter_equivalence(new_network, old_network)
 
 
-def test_dropout_probabilities():
+def test_training():
     graph = nx.DiGraph()
     graph.add_edges_from([(0, 1), (0, 2), (1, 3), (2, 3)])
     input_neurons = [0]
@@ -380,6 +380,10 @@ def test_dropout_probabilities():
         output_neurons,
         hidden_activation=eqx.nn.MLP(1, 1, 2, 2, key=jr.PRNGKey(0)),
         dropout_p=0.5,
+        use_topo_norm=True,
+        use_topo_self_attention=True,
+        use_neuron_self_attention=True,
+        use_adaptive_activations=True,
     )
     network_copy = deepcopy(network)
 
