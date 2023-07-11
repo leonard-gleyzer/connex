@@ -2,32 +2,32 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://leonard-gleyzer.github.io/connex/</loc>
-         <lastmod>2023-06-06</lastmod>
+         <lastmod>2023-07-11</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://leonard-gleyzer.github.io/connex/citation/</loc>
-         <lastmod>2023-06-06</lastmod>
+         <lastmod>2023-07-11</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://leonard-gleyzer.github.io/connex/api/network/</loc>
-         <lastmod>2023-06-06</lastmod>
+         <lastmod>2023-07-11</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://leonard-gleyzer.github.io/connex/api/plasticity/</loc>
-         <lastmod>2023-06-06</lastmod>
+         <lastmod>2023-07-11</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://leonard-gleyzer.github.io/connex/api/nn/dense_mlp/</loc>
-         <lastmod>2023-06-06</lastmod>
+         <lastmod>2023-07-11</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://leonard-gleyzer.github.io/connex/api/nn/mlp/</loc>
-         <lastmod>2023-06-06</lastmod>
+         <lastmod>2023-07-11</lastmod>
          <changefreq>daily</changefreq>
     </url>
 </urlset>
