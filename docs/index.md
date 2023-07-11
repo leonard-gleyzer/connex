@@ -60,7 +60,6 @@ That's it! A `connex.NeuralNetwork` is a subclass of `equinox.Module`, so it can
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-import jax.random as jr
 import optax
 
 # Initialize the optimizer
@@ -90,7 +89,7 @@ n_epochs = 500
 key = jr.PRNGKey(0)
 for epoch in range(n_epochs):
     network, opt_state, loss = step(network, opt_state, x, y)
-    print(f"Epoch: {epoch + 1}   Loss: {loss}")
+    print(f"Epoch: {epoch}   Loss: {loss}")
 ```
 
 Now suppose we wish to add connections 1 &rarr; 6 and 2 &rarr; 11, remove neuron 9, and set the dropout probability of all hidden neurons to 0.1:
@@ -106,7 +105,7 @@ network = cnx.remove_neurons(network, [9])
 network = cnx.set_dropout_p(network, 0.1)
 ```
 
-That's all there is to it.  The new connections have been initialized with untrained parameters, and the neurons in the original network that have not been removed (along with their respective incoming and outgoing connections) have retained their trained parameters. Furthermore, since a `connex.NeuralNetwork` is an `equinox.Module`, it can seamlessly be used as a submodule inside other Equinox Modules.
+That's all there is to it.  The new connections have been initialized with untrained parameters, and the neurons in the original network that have not been removed (along with their respective incoming and outgoing connections) have retained their trained parameters.
 
 For more information about manipulating connectivity structure and the `NeuralNetwork` base class, please see the API section of the documentation. For examples of subclassing `NeuralNetwork`, please see `connex.nn`.
 
