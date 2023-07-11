@@ -54,7 +54,7 @@ network = cnx.NeuralNetwork(
 )
 ```
 
-That's it! A `connex.NeuralNetwork` is a subclass of `equinox.Module`, so it can be trained in the same fashion:
+That's it! A `connex.NeuralNetwork` is a subclass of `equinox.Module`, so it can be trained as such:
 
 ```python
 import equinox as eqx
