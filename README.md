@@ -86,7 +86,6 @@ y = jnp.hstack((jnp.cos(x), jnp.sin(x)))
 
 # Training loop
 n_epochs = 500
-key = jr.PRNGKey(0)
 for epoch in range(n_epochs):
     network, opt_state, loss = step(network, opt_state, x, y)
     print(f"Epoch: {epoch}   Loss: {loss}")
