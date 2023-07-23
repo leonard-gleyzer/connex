@@ -1,5 +1,6 @@
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
-from typing import Any, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Optional, Union
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -13,7 +14,7 @@ from ._utils import _edges_to_adjacency_dict
 
 def _get_id_mappings_old_new(
     old_network: NeuralNetwork, new_network: NeuralNetwork
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     old_neurons, new_neurons = old_network._graph.nodes(), new_network._graph.nodes()
     ids_old_to_new = -np.ones((old_network._num_neurons,), dtype=int)
     for neuron in old_neurons:
@@ -32,7 +33,7 @@ def _get_id_mappings_old_new(
 
 def add_connections(
     network: NeuralNetwork,
-    connections: Union[Sequence[Tuple[Any, Any]], Mapping[Any, Sequence[Any]]],
+    connections: Union[Sequence[tuple[Any, Any]], Mapping[Any, Sequence[Any]]],
     *,
     key: Optional[jr.PRNGKey] = None,
 ) -> NeuralNetwork:
@@ -276,7 +277,7 @@ def add_connections(
 
 def remove_connections(
     network: NeuralNetwork,
-    connections: Union[Sequence[Tuple[Any, Any]], Mapping[Any, Sequence[Any]]],
+    connections: Union[Sequence[tuple[Any, Any]], Mapping[Any, Sequence[Any]]],
 ) -> NeuralNetwork:
     """Remove connections from the network.
 

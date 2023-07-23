@@ -1,4 +1,5 @@
-from typing import Any, Callable, Mapping, Optional, Union
+from collections.abc import Callable, Mapping
+from typing import Any, Optional, Union
 
 import jax.nn as jnn
 import jax.random as jr

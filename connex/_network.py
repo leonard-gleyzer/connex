@@ -1,6 +1,7 @@
 import functools as ft
+from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Optional, Union
 
 import jax.nn as jnn
 import jax.numpy as jnp
@@ -16,33 +17,33 @@ from ._utils import _identity, _invert_dict, _keygen, DiGraphLike
 class NeuralNetwork(Module):
     """A neural network whose structure is specified by a DAG."""
 
-    _weights_and_biases: List[Array]
+    _weights_and_biases: list[Array]
     _hidden_activation: Callable
     _output_transformation: Callable
-    _topo_norm_params: List[Array]
-    _attention_params_topo: List[Array]
-    _attention_params_neuron: List[Array]
-    _adaptive_activation_params: List[Array]
-    _dropout_dict: Dict[Any, float]
+    _topo_norm_params: list[Array]
+    _attention_params_topo: list[Array]
+    _attention_params_neuron: list[Array]
+    _adaptive_activation_params: list[Array]
+    _dropout_dict: dict[Any, float]
     _dropout_array: Array
     _graph: nx.DiGraph = static_field()
-    _adjacency_dict: Dict[Any, List[Any]] = static_field()
-    _adjacency_dict_inv: Dict[Any, List[Any]] = static_field()
-    _neuron_to_id: Dict[Any, int] = static_field()
-    _topo_batches: List[Array] = static_field()
+    _adjacency_dict: dict[Any, list[Any]] = static_field()
+    _adjacency_dict_inv: dict[Any, list[Any]] = static_field()
+    _neuron_to_id: dict[Any, int] = static_field()
+    _topo_batches: list[Array] = static_field()
     _topo_lengths: np.ndarray = static_field()
-    _topo_sizes: List[int] = static_field()
+    _topo_sizes: list[int] = static_field()
     _num_topo_batches: int = static_field()
-    _neuron_to_topo_batch_idx: Dict[int, Tuple[int, int]] = static_field()
-    _topo_sort: List[Any] = static_field()
+    _neuron_to_topo_batch_idx: dict[int, tuple[int, int]] = static_field()
+    _topo_sort: list[Any] = static_field()
     _min_index: np.ndarray = static_field()
     _max_index: np.ndarray = static_field()
-    _masks: List[Array] = static_field()
-    _attention_masks_neuron: List[Array] = static_field()
-    _indices: List[Array] = static_field()
-    _input_neurons: List[Any] = static_field()
-    _output_neurons: List[Any] = static_field()
-    _hidden_neurons: List[Any] = static_field()
+    _masks: list[Array] = static_field()
+    _attention_masks_neuron: list[Array] = static_field()
+    _indices: list[Array] = static_field()
+    _input_neurons: list[Any] = static_field()
+    _output_neurons: list[Any] = static_field()
+    _hidden_neurons: list[Any] = static_field()
     _input_neurons_id: Array = static_field()
     _output_neurons_id: Array = static_field()
     _num_neurons: int = static_field()
@@ -509,7 +510,7 @@ class NeuralNetwork(Module):
         """Set the activation functions."""
 
         def _validate_activation_function(
-            activation_func: Callable, input_shape: Tuple[int]
+            activation_func: Callable, input_shape: tuple[int]
         ) -> None:
             x = jnp.zeros(input_shape)
 

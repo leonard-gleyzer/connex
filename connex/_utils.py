@@ -1,7 +1,7 @@
 import time
 import typing
 from collections import defaultdict
-from typing import Any, Dict, List
+from typing import Any
 
 import jax.nn as jnn
 import jax.random as jr
@@ -27,7 +27,7 @@ DiGraphLike = Any
 ###############################################################
 
 
-def _invert_dict(_dict: Dict[Any, List[Any]]) -> Dict[Any, List[Any]]:
+def _invert_dict(_dict):
     _dict_inv = {}
     for (key, vals) in _dict.items():
         for val in vals:
