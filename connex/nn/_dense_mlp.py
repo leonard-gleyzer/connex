@@ -12,7 +12,13 @@ from ._utils import _identity
 
 
 class DenseMLP(NeuralDAG):
-    """A densely connected MLP represented as a Connex DAG."""
+    """A densely connected MLP represented as a Connex DAG.
+
+    `DenseMLP` is similar to `MLP`, but each layer connects to every later
+    layer rather than only to the next layer. This gives later nodes access to
+    all earlier representations, in the spirit of DenseNet-style skip
+    connectivity, while still using the normal `NeuralDAG` runtime.
+    """
 
     def __init__(
         self,
@@ -27,6 +33,22 @@ class DenseMLP(NeuralDAG):
         ops: Sequence[cnx_ops.Op] | None = None,
         key: Array | None = None,
     ):
+        """Create a densely connected layered graph.
+
+        **Arguments:**
+
+        - `input_size`: Number of input nodes.
+        - `output_size`: Number of output nodes.
+        - `width`: Number of nodes in each hidden layer.
+        - `depth`: Number of hidden layers.
+        - `activation`: Elementwise hidden-node activation used by the default
+          op stack.
+        - `output_transform`: Final transform applied to ordered outputs.
+        - `dropout`: Scalar or mapping dropout configuration.
+        - `ops`: Optional custom operation sequence. If supplied, `activation`
+          and `output_transform` are ignored unless your ops use them.
+        - `key`: Random key for parameter initialization.
+        """
         num_neurons = width * depth + input_size + output_size
         spec = GraphSpec(
             _dense_mlp_adjacency(input_size, output_size, width, depth),

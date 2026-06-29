@@ -19,6 +19,8 @@ from ._utils import _identity
 
 
 class ParamLayout(Enum):
+    """Broad parameter layout category used for documentation and inspection."""
+
     GLOBAL = auto()
     NODE = auto()
     EDGE = auto()
@@ -29,6 +31,22 @@ class ParamLayout(Enum):
 
 @dataclass(frozen=True)
 class ForwardContext:
+    """Data passed to batch-stage operations.
+
+    A `ForwardContext` is created for one compiled topological batch during a
+    forward pass. It contains the full node-value buffer, compactly gathered
+    predecessor values, edge-position metadata, target ids, and any outputs
+    produced so far by earlier operations.
+
+    Custom operations normally read one of:
+
+    - `batch_inputs`: unique predecessor values for the batch;
+    - `input_values`: padded predecessor rows shaped like target nodes;
+    - `edge_input_values`: one value per real edge.
+
+    Set `outputs` by returning `dataclasses.replace(ctx, outputs=...)`.
+    """
+
     topology: CompiledTopology
     batch_index: int
     batch: BatchTopology
@@ -50,7 +68,23 @@ class ForwardContext:
 
 
 class Op(eqx.Module):
-    """Base class for user-definable Connex operations."""
+    """Base class for user-definable Connex operations.
+
+    Operations are small Equinox modules that participate in a `NeuralDAG`
+    forward pass. They can own trainable arrays, expose static metadata, create
+    runtime state such as dropout masks, and transfer parameters across topology
+    edits.
+
+    The main extension point is `apply(ctx, ...)`, which receives a
+    `ForwardContext` for one topological batch and returns an updated context.
+    Operations that need to touch input nodes before any hidden/output nodes are
+    computed can override `apply_inputs`. Operations that transform the final
+    model output can set `stage="output"` and override `apply_output`.
+
+    The `needs_*` flags tell `NeuralDAG` which gathered inputs to prepare. Set
+    these narrowly for performance: a custom operation that only reads
+    `ctx.outputs` should set all three to `False`.
+    """
 
     name: str = eqx.field(static=True, default="op")
     layout: ParamLayout = eqx.field(static=True, default=ParamLayout.GLOBAL)
@@ -109,6 +143,15 @@ class Op(eqx.Module):
 
 
 class EdgeAffine(Op):
+    """Padded edge-wise affine transform.
+
+    Each topological batch stores weights shaped
+    `(batch.size, batch.max_inputs)` plus one bias per target node. Missing
+    padded predecessor slots are masked by the compiled topology. This layout is
+    simple and fast for compact batches where every target has a similar number
+    of predecessors.
+    """
+
     weights: tuple[Array, ...] = ()
     biases: tuple[Array, ...] = ()
     weight_scale: float = eqx.field(static=True, default=0.1)
@@ -181,6 +224,13 @@ class EdgeAffine(Op):
 
 
 class SparseEdgeAffine(Op):
+    """Sparse edge-wise affine transform.
+
+    Each topological batch stores one weight per real edge and scatters edge
+    contributions into target-node outputs. This avoids padded storage and work
+    when a batch has highly uneven fan-in.
+    """
+
     weights: tuple[Array, ...] = ()
     biases: tuple[Array, ...] = ()
     weight_scale: float = eqx.field(static=True, default=0.1)
@@ -254,6 +304,14 @@ class SparseEdgeAffine(Op):
 
 
 class DenseMatmulAffine(Op):
+    """Dense matrix affine transform over unique predecessor values.
+
+    Each topological batch stores a matrix shaped
+    `(batch.size, batch.unique_size)` and multiplies it by the unique
+    predecessor vector. This backend is useful for wide, dense predecessor
+    layouts where the graph already resembles a layer-to-layer matrix multiply.
+    """
+
     weights: tuple[Array, ...] = ()
     biases: tuple[Array, ...] = ()
     weight_scale: float = eqx.field(static=True, default=0.1)
@@ -333,6 +391,14 @@ class DenseMatmulAffine(Op):
 
 
 class HybridEdgeAffine(Op):
+    """Per-batch affine backend selector.
+
+    Hybrid affine chooses padded, sparse, or dense matmul storage separately for
+    each compiled topological batch. Sparse mode is selected when padded slots
+    would dominate real edges. Matmul mode is selected for wide complete
+    predecessor batches. Otherwise the padded layout is used.
+    """
+
     weights: tuple[Array, ...] = ()
     biases: tuple[Array, ...] = ()
     sparse_batches: tuple[bool, ...] = eqx.field(static=True, default=())
@@ -483,6 +549,13 @@ class HybridEdgeAffine(Op):
 
 
 class TopoNorm(Op):
+    """Normalize the unique inputs of each topological batch.
+
+    This is a graph/topology analogue of layer normalization. For every
+    topological batch, Connex standardizes the batch's unique predecessor values
+    and applies trainable elementwise affine parameters `gamma` and `beta`.
+    """
+
     params: tuple[Array, ...] = ()
     name: str = eqx.field(static=True, default="topo_norm")
     layout: ParamLayout = eqx.field(static=True, default=ParamLayout.TOPO_INPUT)
@@ -536,6 +609,14 @@ class TopoNorm(Op):
 
 
 class TopoSelfAttention(Op):
+    """Single-headed self-attention over a batch's unique predecessor values.
+
+    This operation lets a topological batch mix information across all of its
+    available inputs before the affine transform. It is cheaper than
+    neuron-level attention because it attends once over the collective input set
+    for the batch.
+    """
+
     params: tuple[Array, ...] = ()
     weight_scale: float = eqx.field(static=True, default=0.1)
     name: str = eqx.field(static=True, default="topo_self_attention")
@@ -615,6 +696,14 @@ class TopoSelfAttention(Op):
 
 
 class NeuronSelfAttention(Op):
+    """Single-headed self-attention over each target neuron's input row.
+
+    Every target node attends over its own predecessor values before the affine
+    transform. This is more expressive than `TopoSelfAttention`, but can use
+    substantially more memory because attention parameters are stored per
+    target node and padded input row.
+    """
+
     params: tuple[Array, ...] = ()
     weight_scale: float = eqx.field(static=True, default=0.1)
     name: str = eqx.field(static=True, default="neuron_self_attention")
@@ -691,6 +780,12 @@ class NeuronSelfAttention(Op):
 
 
 class Activation(Op):
+    """Apply an activation to hidden-node outputs.
+
+    Output nodes are intentionally left unactivated here; use `OutputTransform`
+    for group-wise output behavior such as softmax.
+    """
+
     activation: Callable = _identity
     name: str = eqx.field(static=True, default="activation")
     layout: ParamLayout = eqx.field(static=True, default=ParamLayout.GLOBAL)
@@ -722,6 +817,12 @@ class Activation(Op):
 
 
 class AdaptiveActivation(Op):
+    """Trainable per-node activation scaling.
+
+    Hidden activations are transformed as `a * activation(b * x)`, with trainable
+    scalars `a` and `b` per target node. Output nodes are not transformed.
+    """
+
     activation: Callable = _identity
     params: tuple[Array, ...] = ()
     name: str = eqx.field(static=True, default="adaptive_activation")
@@ -769,6 +870,14 @@ class AdaptiveActivation(Op):
 
 
 class Dropout(Op):
+    """Node-wise dropout with explicit runtime keys.
+
+    Dropout probabilities come from the op's own `dropout` field when supplied,
+    otherwise from `GraphSpec.dropout`. If any probability is nonzero, forward
+    calls must provide a JAX random key. This avoids hidden global randomness and
+    makes stochastic behavior explicit under JIT and transformations.
+    """
+
     dropout: Any = eqx.field(static=True, default=None)
     dropout_probs: tuple[float, ...] = eqx.field(static=True, default=())
     active: bool = eqx.field(static=True, default=False)
@@ -832,6 +941,14 @@ class Dropout(Op):
 
 
 class FusedDefaultOp(Op):
+    """Fused affine, activation, and optional dropout operation.
+
+    This combines the common default stack into one batch-stage operation. It
+    can reduce Python-level operation dispatch and is eligible for the same
+    scan-chain execution plan as the equivalent unfused affine/activation/dropout
+    stack when no extra feature operations are present.
+    """
+
     affine: Op = eqx.field(default_factory=HybridEdgeAffine)
     activation: Callable = _identity
     dropout: Any = eqx.field(static=True, default=None)
@@ -937,6 +1054,13 @@ class FusedDefaultOp(Op):
 
 
 class OutputTransform(Op):
+    """Apply a final transform to the model output array.
+
+    This operation runs after all graph nodes have been computed and receives
+    only the ordered output array. Use it for group-wise transforms such as
+    identity, sigmoid, or softmax over outputs.
+    """
+
     transform: Callable = _identity
     name: str = eqx.field(static=True, default="output_transform")
     layout: ParamLayout = eqx.field(static=True, default=ParamLayout.GLOBAL)
@@ -976,6 +1100,30 @@ def default_ops(
     neuron_self_attention: bool = False,
     adaptive_activation: bool = False,
 ) -> tuple[Op, ...]:
+    """Build the standard Connex operation pipeline.
+
+    **Arguments:**
+
+    - `affine`: One of `"padded"`, `"sparse"`, `"matmul"`, or `"hybrid"`.
+      Hybrid is the default and chooses a backend per topological batch.
+    - `activation`: Elementwise hidden-node activation.
+    - `output_transform`: Final transform applied to the ordered output array.
+    - `dropout`: Optional scalar or mapping dropout configuration. If `None`,
+      the model uses `GraphSpec.dropout`.
+    - `fused`: If `True`, use `FusedDefaultOp` when no feature operations or
+      adaptive activations are requested.
+    - `topo_norm`: Insert `TopoNorm` before the affine op.
+    - `topo_self_attention`: Insert `TopoSelfAttention` before the affine op.
+    - `neuron_self_attention`: Insert `NeuronSelfAttention` before the affine op.
+    - `adaptive_activation`: Use `AdaptiveActivation` instead of plain
+      `Activation`.
+
+    **Returns:**
+
+    A tuple of initialized-operation templates suitable for
+    `NeuralDAG(spec, ops=...)`. The model initializes the returned operations
+    against its compiled topology.
+    """
     ops: list[Op] = []
     if topo_norm:
         ops.append(TopoNorm())

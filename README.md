@@ -6,11 +6,12 @@ networks whose topology is defined by a directed acyclic graph.
 
 With Connex, you can:
 
-- Compile a DAG into a trainable Equinox module.
-- Compose built-in or user-defined graph operations.
-- Add and remove connections or neurons while preserving compatible parameters.
-- Use explicit JAX random keys for stochastic behavior such as dropout.
-- Export a trained model to a NetworkX weighted digraph.
+- compile a DAG into a trainable Equinox module;
+- compose built-in or user-defined graph operations;
+- add and remove connections or neurons while preserving compatible parameters;
+- set scalar or per-node dropout with explicit JAX random keys;
+- use padded, sparse, matmul, or hybrid affine backends;
+- export trained parameters to a NetworkX weighted digraph.
 
 ## Installation
 
@@ -18,7 +19,7 @@ With Connex, you can:
 pip install connex
 ```
 
-## Usage
+## Quickstart
 
 ```python
 import connex as cnx
@@ -49,34 +50,25 @@ model = cnx.NeuralDAG(
 y = model(jnp.array([1.0]))
 ```
 
-The default affine backend is hybrid: each compiled topological batch chooses
-padded predecessor rows, sparse edge accumulation, or dense matmul based on the
-batch structure. Long one-input chain segments are collapsed into a `lax.scan`
-execution plan automatically when the operation stack supports it. Scan segments
-only write values back for graph outputs or nodes consumed outside the segment.
-Custom operations and richer feature operations fall back to the generic
-topological batch path. You can force a backend when benchmarking a specific
-graph family:
+`GraphSpec` validates the DAG and preserves input/output ordering. `NeuralDAG`
+is an `equinox.Module`, so training uses standard Equinox and Optax patterns:
 
 ```python
-model = cnx.NeuralDAG(
-    spec,
-    ops=cnx.ops.default_ops(affine="sparse", activation=jax.nn.relu),
-    key=jr.key(0),
-)
+import equinox as eqx
+import optax
+
+optim = optax.adam(1e-3)
+opt_state = optim.init(eqx.filter(model, eqx.is_array))
+
+
+@eqx.filter_value_and_grad
+def loss_fn(model, x, y):
+    pred = model.batched(x)
+    return jnp.mean((pred - y) ** 2)
 ```
 
-Dropout is explicit-key only:
-
-```python
-model = cnx.NeuralDAG(
-    cnx.GraphSpec(graph, inputs=[0], outputs=[3, 11], dropout=0.1),
-    key=jr.key(0),
-)
-y = model(jnp.array([1.0]), key=jr.key(1))
-```
-
-Topology edits go through the editor API:
+Topology edits go through the editor API. Edits return a new model and leave the
+old one untouched:
 
 ```python
 model = (
@@ -88,7 +80,12 @@ model = (
 )
 ```
 
-Custom operations can participate in the same pipeline:
+The default affine backend is hybrid: each topological batch chooses padded
+rows, sparse edge accumulation, or dense matmul based on graph structure. Long
+one-input chain segments use an automatic `jax.lax.scan` execution plan when the
+operation stack supports it.
+
+Custom operations subclass `connex.ops.Op` and participate in the same pipeline:
 
 ```python
 class MyOp(cnx.ops.Op):
@@ -101,6 +98,12 @@ Prebuilt graph constructors are available under `connex.nn`:
 ```python
 model = cnx.nn.MLP(2, 1, width=32, depth=3, key=jr.key(0))
 ```
+
+## Documentation
+
+Full documentation lives at:
+
+https://leonard-gleyzer.github.io/connex
 
 ## Citation
 

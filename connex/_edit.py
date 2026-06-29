@@ -12,7 +12,23 @@ from ._spec import DropoutLike, GraphSpec
 
 
 class TopologyEditor:
-    """Fluent editor for structural changes to a `NeuralDAG`."""
+    """Fluent editor for structural changes to a `NeuralDAG`.
+
+    Editors accumulate changes on a pending graph description. Calling
+    `build(...)` validates the result, recompiles topology, initializes any new
+    parameters, and transfers compatible parameters from the original model.
+
+    Methods mutate the editor object and return `self`, so edits can be chained:
+
+    ```python
+    model = (
+        connex.edit(model)
+        .add_edges([(1, 3)])
+        .remove_nodes([2])
+        .build(key=key)
+    )
+    ```
+    """
 
     def __init__(self, model: NeuralDAG):
         self._model = model
@@ -27,6 +43,13 @@ class TopologyEditor:
         self,
         edges: Sequence[tuple[Any, Any]] | Mapping[Any, Sequence[Any]],
     ) -> TopologyEditor:
+        """Add directed edges between existing nodes.
+
+        `edges` can be a sequence of `(source, target)` tuples or an adjacency
+        mapping. Nodes must already exist. Duplicate edges are ignored by
+        NetworkX. The final graph is validated when `build()` is called, so
+        cycles and invalid input/output structure fail there.
+        """
         if isinstance(edges, Mapping):
             edge_list = [
                 (source, target)
@@ -47,6 +70,12 @@ class TopologyEditor:
         self,
         edges: Sequence[tuple[Any, Any]] | Mapping[Any, Sequence[Any]],
     ) -> TopologyEditor:
+        """Remove directed edges.
+
+        Missing edges are ignored, matching NetworkX behavior. Removing edges
+        never removes nodes; isolated hidden nodes remain in the graph unless
+        explicitly removed with `remove_nodes`.
+        """
         if isinstance(edges, Mapping):
             edge_list = [
                 (source, target)
@@ -59,6 +88,12 @@ class TopologyEditor:
         return self
 
     def add_hidden_nodes(self, nodes: Sequence[Any]) -> TopologyEditor:
+        """Add hidden nodes with no edges.
+
+        New hidden nodes are inserted before output nodes in the stored
+        topological order. Add edges in the same editor chain if the nodes
+        should participate in computation.
+        """
         nodes = list(nodes)
         self._validate_new_nodes(nodes)
         self._graph.add_nodes_from(nodes)
@@ -67,6 +102,12 @@ class TopologyEditor:
         return self
 
     def add_input_nodes(self, nodes: Sequence[Any]) -> TopologyEditor:
+        """Add input nodes with no incoming edges.
+
+        New input nodes are prepended to the input order, so they correspond to
+        the leading entries of future input arrays. Add outgoing edges in the
+        same editor chain if they should feed existing graph structure.
+        """
         nodes = list(nodes)
         self._validate_new_nodes(nodes)
         self._graph.add_nodes_from(nodes)
@@ -75,6 +116,12 @@ class TopologyEditor:
         return self
 
     def add_output_nodes(self, nodes: Sequence[Any]) -> TopologyEditor:
+        """Add output nodes with no outgoing edges.
+
+        New output nodes are appended to the output order, so they appear at the
+        end of future model outputs. Add incoming edges before `build()` if they
+        should compute nonzero values.
+        """
         nodes = list(nodes)
         self._validate_new_nodes(nodes)
         self._graph.add_nodes_from(nodes)
@@ -83,6 +130,11 @@ class TopologyEditor:
         return self
 
     def remove_nodes(self, nodes: Sequence[Any]) -> TopologyEditor:
+        """Remove nodes and all incident edges.
+
+        Removed nodes are also removed from input/output ordering and from
+        mapping-style dropout configuration.
+        """
         for node in nodes:
             if node not in self._graph:
                 raise ValueError(f"Node {node!r} does not exist.")
@@ -100,6 +152,12 @@ class TopologyEditor:
         return self
 
     def set_dropout(self, dropout: DropoutLike) -> TopologyEditor:
+        """Update dropout for the rebuilt model.
+
+        Scalar dropout applies to hidden nodes. Mapping dropout can target any
+        node. Built-in dropout operations in the current op pipeline are updated
+        to use the same configuration.
+        """
         self._dropout = dropout
         self._ops = [
             op.with_dropout(dropout) if isinstance(op, cnx_ops.Dropout) else op
@@ -108,6 +166,19 @@ class TopologyEditor:
         return self
 
     def build(self, *, key: Array | None = None) -> NeuralDAG:
+        """Build the edited model.
+
+        **Arguments:**
+
+        - `key`: Random key used to initialize parameters for new nodes or
+          edges. Existing compatible parameters are transferred where each
+          operation supports transfer.
+
+        **Returns:**
+
+        A new `NeuralDAG`. The original model and earlier editor snapshots are
+        unchanged.
+        """
         spec = GraphSpec(
             self._graph,
             inputs=self._inputs,
@@ -124,4 +195,9 @@ class TopologyEditor:
 
 
 def edit(model: NeuralDAG) -> TopologyEditor:
+    """Start a fluent topology edit for `model`.
+
+    This is the preferred public entry point for graph mutation. It returns a
+    `TopologyEditor`; call `build(...)` on that editor to obtain the new model.
+    """
     return TopologyEditor(model)

@@ -12,7 +12,14 @@ from ._utils import _identity
 
 
 class MLP(NeuralDAG):
-    """A standard multi-layer perceptron represented as a Connex DAG."""
+    """A standard multi-layer perceptron represented as a Connex DAG.
+
+    `MLP` builds a layered graph with fully connected edges only between
+    adjacent layers. It is a convenience subclass of `NeuralDAG`, not a separate
+    runtime: the resulting model can be edited with `connex.edit`, exported to
+    NetworkX, trained with Equinox, and customized with the same operation
+    pipeline as any other `NeuralDAG`.
+    """
 
     def __init__(
         self,
@@ -27,6 +34,22 @@ class MLP(NeuralDAG):
         ops: Sequence[cnx_ops.Op] | None = None,
         key: Array | None = None,
     ):
+        """Create a layered MLP graph.
+
+        **Arguments:**
+
+        - `input_size`: Number of input nodes.
+        - `output_size`: Number of output nodes.
+        - `width`: Number of nodes in each hidden layer.
+        - `depth`: Number of hidden layers.
+        - `activation`: Elementwise hidden-node activation used by the default
+          op stack.
+        - `output_transform`: Final transform applied to ordered outputs.
+        - `dropout`: Scalar or mapping dropout configuration.
+        - `ops`: Optional custom operation sequence. If supplied, `activation`
+          and `output_transform` are ignored unless your ops use them.
+        - `key`: Random key for parameter initialization.
+        """
         spec = GraphSpec(
             _mlp_adjacency(input_size, output_size, width, depth),
             inputs=np.arange(input_size, dtype=int),

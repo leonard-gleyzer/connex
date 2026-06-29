@@ -75,7 +75,21 @@ ExecutionPlanEntry = BatchPlan | ScanPlan
 
 
 class NeuralDAG(eqx.Module):
-    """A trainable neural network runtime compiled from a DAG specification."""
+    """A trainable neural network runtime compiled from a DAG specification.
+
+    `NeuralDAG` is the core Connex model type. It is an `equinox.Module` whose
+    trainable leaves live inside operation objects, while graph structure and
+    compiled topology metadata are static. This makes models compatible with
+    `eqx.filter_jit`, `eqx.filter_value_and_grad`, `eqx.apply_updates`, and the
+    usual JAX transformations.
+
+    Forward evaluation proceeds in compiled topological order. Connex groups
+    nodes into batches whose predecessors are already available, gathers the
+    data requested by each operation, and writes newly computed node values into
+    a value buffer. Compatible one-input chain regions are represented as
+    `jax.lax.scan` execution-plan segments; unsupported operation stacks and
+    custom operations use the generic topological batch path.
+    """
 
     spec: GraphSpec = eqx.field(static=True)
     topology: CompiledTopology = eqx.field(static=True)
@@ -90,6 +104,22 @@ class NeuralDAG(eqx.Module):
         ops: Sequence[Any] | None = None,
         key: Array | None = None,
     ):
+        """Initialize a model from a graph specification.
+
+        **Arguments:**
+
+        - `spec`: Validated graph, input/output ordering, topological order, and
+          dropout configuration.
+        - `ops`: Operation pipeline. If `None`, Connex uses
+          `connex.ops.default_ops()`, which is a hybrid affine op, activation,
+          dropout, and output transform.
+        - `key`: JAX random key used to initialize operation parameters. If
+          omitted, `jax.random.key(0)` is used.
+
+        The operation sequence is initialized once against the compiled
+        topology. Each operation may create trainable arrays, static metadata,
+        or no state at all.
+        """
         topology = compile_topology(spec)
         ops = cnx_ops.default_ops() if ops is None else tuple(ops)
         key = jr.key(0) if key is None else key
@@ -111,6 +141,13 @@ class NeuralDAG(eqx.Module):
         topology: CompiledTopology,
         ops: Sequence[Any],
     ) -> NeuralDAG:
+        """Construct a model from already compiled components.
+
+        This is mostly useful for internal rebuilds, tests, and advanced users
+        who are deliberately reusing an existing `CompiledTopology` and
+        operation tuple. Most code should call `NeuralDAG(spec, ...)` or use the
+        topology editor instead.
+        """
         model = object.__new__(cls)
         ops = tuple(ops)
         object.__setattr__(model, "spec", spec)
@@ -130,6 +167,24 @@ class NeuralDAG(eqx.Module):
         key: Array | None = None,
         ops: Sequence[Any] | None = None,
     ) -> NeuralDAG:
+        """Recompile a model against a new graph specification.
+
+        The new operation pipeline is initialized for `spec`, then each old
+        operation is asked to transfer compatible parameters into the initialized
+        replacement. Built-in affine operations preserve parameters for nodes and
+        edges that still exist by label.
+
+        **Arguments:**
+
+        - `spec`: New graph specification.
+        - `key`: Random key for initializing newly created parameters.
+        - `ops`: Optional replacement operation sequence. If omitted, the
+          current operations are reused.
+
+        **Returns:**
+
+        A new `NeuralDAG`; the original model is unchanged.
+        """
         new_topology = compile_topology(spec)
         old_ops = self.ops if ops is None else tuple(ops)
         key = jr.key(0) if key is None else key
@@ -145,6 +200,21 @@ class NeuralDAG(eqx.Module):
 
     @eqx.filter_jit
     def __call__(self, x: Array, *, key: Array | None = None) -> Array:
+        """Evaluate one input example.
+
+        **Arguments:**
+
+        - `x`: Array whose trailing dimension matches `len(spec.inputs)`.
+          Values are assigned to input nodes in specification order.
+        - `key`: Optional JAX random key used by runtime stochastic operations
+          such as dropout. If any active dropout operation is present, a key is
+          required.
+
+        **Returns:**
+
+        Output values in `spec.outputs` order after the output-stage operations
+        have been applied.
+        """
         topology = self.topology
         values = jnp.zeros((topology.num_nodes,), dtype=jnp.asarray(x).dtype)
         input_ids = jnp.asarray(topology.input_ids, dtype=int)
@@ -179,6 +249,23 @@ class NeuralDAG(eqx.Module):
 
     @eqx.filter_jit
     def batched(self, x: Array, *, key: Array | None = None) -> Array:
+        """Evaluate a batch of examples with one shared runtime state.
+
+        This is the native batched path and avoids compiling `jax.vmap(model)`
+        over the whole DAG. It is appropriate for deterministic evaluation or
+        when a shared dropout mask is desired. For independent stochastic state
+        per example, split keys and use `jax.vmap(lambda x_i, key_i:
+        model(x_i, key=key_i))(x, keys)`.
+
+        **Arguments:**
+
+        - `x`: Array of shape `(batch, len(spec.inputs))`.
+        - `key`: Optional runtime key shared by the whole batch.
+
+        **Returns:**
+
+        Array of shape `(batch, len(spec.outputs))`.
+        """
         topology = self.topology
         x = jnp.asarray(x)
         values = jnp.zeros((x.shape[0], topology.num_nodes), dtype=x.dtype)
@@ -213,6 +300,13 @@ class NeuralDAG(eqx.Module):
         return y
 
     def to_networkx_weighted_digraph(self) -> nx.DiGraph:
+        """Export the model graph with learned edge weights.
+
+        The returned `networkx.DiGraph` copies `self.spec.graph` and annotates
+        each edge with a `"weight"` attribute when a built-in affine operation is
+        present. Sparse, matmul, padded, and hybrid affine layouts are all
+        mapped back to the original graph edge labels.
+        """
         graph = nx.DiGraph(self.spec.graph)
         padded_affine = next(
             (op for op in self.ops if isinstance(op, cnx_ops.EdgeAffine)), None

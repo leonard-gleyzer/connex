@@ -13,7 +13,23 @@ DropoutLike = float | Mapping[Any, float]
 
 @dataclass(frozen=True, init=False)
 class GraphSpec:
-    """Validated, immutable graph definition for a Connex model."""
+    """Validated, immutable graph definition for a Connex model.
+
+    A `GraphSpec` is the non-trainable description of a model: the graph, the
+    ordered input and output nodes, the canonical topological order, and the
+    dropout configuration. `NeuralDAG` compiles this object into static topology
+    metadata and initializes trainable operation parameters from it.
+
+    `graph` may be a `networkx.DiGraph` or any object accepted by
+    `networkx.DiGraph(graph)`, including adjacency dictionaries and edge lists.
+    Connex validates that the graph is a DAG, that input nodes have no incoming
+    edges, that output nodes have no outgoing edges, and that no node appears in
+    both `inputs` and `outputs`.
+
+    The order of `inputs` and `outputs` is semantically meaningful. Forward
+    calls read `x[i]` into `inputs[i]` and return output values in `outputs`
+    order.
+    """
 
     graph: nx.DiGraph
     inputs: tuple[Any, ...]
@@ -30,6 +46,33 @@ class GraphSpec:
         topo_sort: Sequence[Any] | None = None,
         dropout: DropoutLike = 0.0,
     ):
+        """Create a validated graph specification.
+
+        **Arguments:**
+
+        - `graph`: A directed graph or graph-like object accepted by
+          `networkx.DiGraph`. The resulting graph must be acyclic.
+        - `inputs`: Ordered input node labels. These nodes must exist in the
+          graph and must not receive incoming edges.
+        - `outputs`: Ordered output node labels. These nodes must exist in the
+          graph and must not have outgoing edges.
+        - `topo_sort`: Optional topological order. Supplying this avoids a
+          NetworkX topological sort during construction and gives stable
+          ordering for isolated hidden nodes. The sequence must contain exactly
+          the graph nodes and must respect every edge.
+        - `dropout`: Either a scalar probability or a mapping from node label to
+          probability. Scalar dropout applies to hidden nodes only. Mapping
+          dropout defaults unspecified nodes to zero and can target inputs,
+          hidden nodes, and outputs.
+
+        **Raises:**
+
+        - `ValueError`: If the graph is cyclic, missing required nodes, has
+          invalid input/output edge structure, has overlapping inputs/outputs,
+          has an invalid topological order, or contains dropout probabilities
+          outside `[0, 1]`.
+        - `TypeError`: If `dropout` is neither a scalar nor a mapping.
+        """
         graph = nx.DiGraph(graph)
         inputs = tuple(inputs)
         outputs = tuple(outputs)
@@ -121,6 +164,13 @@ class GraphSpec:
         return validated
 
     def dropout_by_node(self) -> dict[Any, float]:
+        """Return dropout probabilities keyed by graph node label.
+
+        Scalar dropout expands to every hidden node and leaves inputs and
+        outputs at probability zero. Mapping dropout is returned with missing
+        nodes filled in as zero. The output dictionary follows `topo_sort`
+        ordering.
+        """
         if isinstance(self.dropout, float):
             hidden = set(self.topo_sort) - set(self.inputs) - set(self.outputs)
             return {
@@ -137,6 +187,12 @@ class GraphSpec:
         topo_sort: Sequence[Any] | None = None,
         dropout: DropoutLike | None = None,
     ) -> GraphSpec:
+        """Return a new `GraphSpec` with replacement graph metadata.
+
+        Any argument left as `None` is copied from the current specification.
+        The returned object is fully revalidated, so this method is useful for
+        small immutable graph transformations outside the editor API.
+        """
         return GraphSpec(
             graph,
             inputs=self.inputs if inputs is None else inputs,
@@ -146,6 +202,7 @@ class GraphSpec:
         )
 
     def with_dropout(self, dropout: DropoutLike) -> GraphSpec:
+        """Return a new `GraphSpec` with the same graph and new dropout."""
         return GraphSpec(
             self.graph,
             inputs=self.inputs,
