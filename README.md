@@ -16,7 +16,7 @@ With Connex, you can:
 ## Installation
 
 ```bash
-pip install connex
+uv add connex
 ```
 
 ## Quickstart
