@@ -1,6 +1,6 @@
 # MLP
 
 ::: connex.nn.MLP
-    selection:
+    options:
         members:
             - __init__

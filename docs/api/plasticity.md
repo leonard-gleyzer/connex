@@ -1,21 +1,21 @@
-# Artificial Neuroplasticity
+# Topology Editing
 
-The brain has a remarkable ability to rewire itself under the right conditions, known as plasticity. This includes, among other processes, the formation of new synapses (synaptogenesis), the removal of synapses (synaptic pruning), the formation of new neurons (neurogenesis), and the removal of neurons (programmed cell death).
+Topology edits are performed with `connex.edit(model)`, which returns a
+`TopologyEditor`. Calling `build(...)` recompiles the graph and transfers
+compatible parameters.
 
-Furthermore, specific neurons/clusters of neurons can be made to be more or less likely to fire, known as neuromodulation.
+::: connex.edit
 
-We provide the following code functionality to mirror these processes. All return a copy of the network and leave the input network unmodified.
+---
 
-::: connex.add_connections
----
-::: connex.remove_connections
----
-::: connex.add_input_neurons
----
-::: connex.add_hidden_neurons
----
-::: connex.add_output_neurons
----
-::: connex.remove_neurons
----
-::: connex.set_dropout_p
+::: connex.TopologyEditor
+    options:
+        members:
+            - add_edges
+            - remove_edges
+            - add_input_nodes
+            - add_hidden_nodes
+            - add_output_nodes
+            - remove_nodes
+            - set_dropout
+            - build

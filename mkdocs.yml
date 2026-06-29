@@ -66,23 +66,11 @@ markdown_extensions:
 
 plugins:
     - search  # default search plugin; needs manually re-enabling when using any other plugins
-    - autorefs  # Cross-links to headings
-    - include_exclude_files:
-        include:
-            - ".htaccess"
-        exclude:
-            - "_overrides"
-    - mknotebooks  # Jupyter notebooks
     - mkdocstrings:
         handlers:
             python:
-                setup_commands:
-                    - import pytkdocs_tweaks
-                    - pytkdocs_tweaks.main()
-
-                selection:
+                options:
                     inherited_members: true  # Allow looking up inherited methods
-                rendering:
                     show_root_heading: true  # actually display anything at all...
                     show_root_full_path: true  # display "connex.asdf" not just "asdf"
                     show_if_no_docstring: true
@@ -96,6 +84,7 @@ nav:
     - API:
         - 'api/network.md'
         - 'api/plasticity.md'
+        - 'api/ops.md'
         - Pre-built Networks:
             - 'api/nn/mlp.md'
             - 'api/nn/dense_mlp.md'

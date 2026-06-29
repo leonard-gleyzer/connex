@@ -1,6 +1,6 @@
 # DenseMLP
 
 ::: connex.nn.DenseMLP
-    selection:
+    options:
         members:
             - __init__
