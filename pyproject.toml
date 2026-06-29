@@ -1,12 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = ["connex/*"]
+exclude = [
+  ".venv/**",
+  ".uv/**",
+  ".uv-cache/**",
+  ".pytest_cache/**",
+  ".ruff_cache/**",
+  "**/__pycache__/**",
+  ".DS_Store",
+]
+
 [project]
 name = "connex"
-version = "0.3.3"
+version = "0.4.0"
 description = "Fine-grained, dynamic control of neural network topology in JAX."
 readme = "README.md"
-requires-python ="~=3.9"
+requires-python =">=3.12"
 license = {file = "LICENSE"}
 authors = [
-  {name = "Leonard Gleyzer", email = "lenny@lenn.ai"},
+  {name = "Leonard Gleyzer"},
 ]
 keywords = ["jax", "neural-networks", "deep-learning"]
 classifiers = [
@@ -23,11 +39,43 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Mathematics",
 ]
 urls = {repository = "https://github.com/leonard-gleyzer/connex" }
-dependencies = ["equinox>=0.10.5", "jax>=0.4.4", "networkx>=0.3.0"]
+dependencies = [
+    "equinox>=0.13.8",
+    "jax>=0.10.2",
+    "networkx>=3.6.1",
+]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+[dependency-groups]
+dev = [
+    "optax>=0.2.6",
+    "pytest>=9.0.2",
+]
 
-[tool.hatch.build]
-include = ["connex/*"]
+[project.optional-dependencies]
+docs = [
+  "hippogriffe==0.2.2",
+  "griffe==1.7.3",
+  "mkdocs==1.6.1",
+  "mkdocs-include-exclude-files==0.1.0",
+  "mkdocs-material==9.6.7",
+  "mkdocstrings==0.28.3",
+  "mkdocstrings-python==1.16.8",
+  "pymdown-extensions==10.16"
+]
+
+[tool.ruff]
+line-length = 90
+exclude = [".*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I001"]
+ignore = ["E402", "E721", "E731", "E741", "F722", "F841"]
+fixable = ["I001", "F401"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+lines-after-imports = 2
+order-by-type = false
+
+[tool.ruff.lint.pycodestyle]
+max-line-length = 120
